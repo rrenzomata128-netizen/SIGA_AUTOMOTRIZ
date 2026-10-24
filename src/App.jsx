@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { logAudit } from './lib/audit';
-import { mapPlantRow, mapUserRow, mapAttendanceRow, toAttendancePayload } from './lib/mappers';
+import { mapPlantRow, mapProfileRow, resolvePlantIds, mapAttendanceRow, toAttendancePayload } from './lib/mappers';
+import { loadProfile, generatePin } from './lib/auth';
+import { adminUsers } from './lib/adminUsers';
+import { nextEmpNo } from './lib/empNo';
 import { safeRound2, safePercentage, parseTimeToMinutes, formatMinutesToHHMM, parseShiftSchedule, evaluateAttendanceMetrics } from './lib/attendanceMetrics';
+
+
 
 import LoginScreen from './components/LoginScreen';
 import Toast from './components/Toast';
@@ -27,6 +32,7 @@ import RecordModal from './components/modals/RecordModal';
 import UserModal from './components/modals/UserModal';
 import PlantModal from './components/modals/PlantModal';
 
+
 export default function App() {
     // ========== AUTENTICACIÓN Y SESIÓN ==========
     const [currentUser, setCurrentUser] = useState(null);
@@ -36,6 +42,30 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(false);
 
     const [currentRole, setCurrentRole] = useState('admin');
+
+    // Restaura la sesión de Supabase al recargar la página y cierra la app si la sesión termina
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+            try {
+                const profile = await loadProfile(session.user.id);
+                if (cancelled) return;
+                if (profile && profile.status === 'ACTIVO') setCurrentUser(profile);
+                else await supabase.auth.signOut();
+            } catch (err) {
+                console.error('No se pudo restaurar la sesión:', err);
+            }
+        })();
+        const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+            if (event === 'SIGNED_OUT') setCurrentUser(null);
+        });
+        return () => {
+            cancelled = true;
+            sub.subscription.unsubscribe();
+        };
+    }, []);
 
     useEffect(() => {
         if (currentUser?.systemRole) {
@@ -99,6 +129,8 @@ export default function App() {
     const [roleFilterAdmin, setRoleFilterAdmin] = useState('ALL');
     const [plantFilterAdmin, setPlantFilterAdmin] = useState('ALL');
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+    const [isSavingUser, setIsSavingUser] = useState(false);
+    const [userModalError, setUserModalError] = useState(null);
     const [editingUser, setEditingUser] = useState(null);
     const [isPlantModalOpen, setIsPlantModalOpen] = useState(false);
     const [editingPlant, setEditingPlant] = useState(null);
@@ -128,12 +160,12 @@ export default function App() {
     }, []);
 
     const fetchUsers = useCallback(async () => {
-        const { data, error } = await supabase.from('system_users').select('*').order('emp_no', { ascending: true });
+        const { data, error } = await supabase.from('profiles').select('*, user_plants(plant_id)').order('emp_no', { ascending: true });
         if (error) {
             console.error('Error cargando usuarios:', error);
             return;
         }
-        if (data) setSystemUsers(data.map(mapUserRow));
+        if (data) setSystemUsers(data.map(mapProfileRow));
     }, []);
 
     const fetchAttendance = useCallback(async () => {
@@ -198,7 +230,7 @@ export default function App() {
         loadAllFromDatabase();
     }, [currentUser, fetchPlants, fetchUsers, fetchAttendance, showToast]);
 
-    // Suscripción Realtime en Supabase para plants, system_users y attendance_records
+    // Suscripción Realtime en Supabase para plants, profiles y attendance_records
     useEffect(() => {
         if (!currentUser) return;
 
@@ -207,7 +239,10 @@ export default function App() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, () => {
                 fetchAttendance();
             })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'system_users' }, () => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+                fetchUsers();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'user_plants' }, () => {
                 fetchUsers();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'plants' }, () => {
@@ -534,14 +569,11 @@ export default function App() {
         reader.onloadend = async () => {
             const base64Image = reader.result;
 
-            // Actualizar en Supabase
-            const { error } = await supabase
-                .from('system_users')
-                .update({ avatar_url: base64Image })
-                .eq('id', currentUser.id);
-
-            if (error) {
-                showToast('Error al subir la fotografía', 'error');
+            // Se guarda mediante la función de servidor (solo permite subirla una vez)
+            try {
+                await adminUsers('set_my_photo', { photoUrl: base64Image });
+            } catch (error) {
+                showToast(error.message || 'Error al subir la fotografía', 'error');
                 console.error(error);
                 return;
             }
@@ -1029,176 +1061,161 @@ export default function App() {
     // ==========================================================================
     // FUNCIONES CRUD DE USUARIOS Y DESBLOQUEO (100% EN SUPABASE)
     // ==========================================================================
-    const handleOpenNewUserModal = (defaultRole = 'INSPECTOR') => {
+const handleOpenNewUserModal = (defaultRole = 'INSPECTOR') => {
+        // Limpiar cualquier error previo del modal si tienes el estado declarado
+        if (typeof setUserModalError === 'function') setUserModalError(null);
+
         const firstPlant = plants[0];
-        const nextNumber = 1041 + systemUsers.length;
         const prefix = defaultRole === 'ADMIN' ? 'ADM' : defaultRole === 'RH' ? 'RH' : defaultRole === 'SUPERVISOR' ? 'SUP' : 'NOM';
+        
         setEditingUser({
             id: `usr-${Date.now()}`,
-            empNo: `${prefix}-${nextNumber}`,
+            empNo: nextEmpNo(prefix, systemUsers),
             name: '',
             systemRole: defaultRole,
             role: defaultRole === 'ADMIN' ? 'Administrador de Sistema' : defaultRole === 'RH' ? 'Analista de Recursos Humanos' : defaultRole === 'SUPERVISOR' ? 'Supervisor de Turno en Planta' : 'Inspector de Calidad y Sorteo',
-            plantId: (defaultRole === 'ADMIN' || defaultRole === 'RH') ? 'ALL' : [firstPlant?.id || 'p1'],
+            plantId: (defaultRole === 'ADMIN' || defaultRole === 'RH') ? 'ALL' : [firstPlant?.code || firstPlant?.id || 'BW-SM'],
             shift: defaultRole === 'ADMIN' || defaultRole === 'RH' ? 'Horario Matriz (08:00 - 17:30)' : (firstPlant?.shifts?.[0] || 'Turno 1 (06:00 - 14:30)'),
             phone: '844-',
-            pin: String(Math.floor(1000 + Math.random() * 9000)),
+            pin: generatePin(),
             active: true,
             allowTerminalSwitch: false,
             avatarUrl: '', // Campo para la foto
-            createTodayAttendance: defaultRole === 'INSPECTOR',
+            createTodayAttendance: false, // 👈 Ahora SIEMPRE inicia desmarcado
             isNew: true
         });
         setIsUserModalOpen(true);
     };
 
-    const handleSaveUser = async (e) => {
-        if (e) e.preventDefault();
-        if (!editingUser) return;
+const handleSaveUser = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setIsSavingUser(true);
+    setUserModalError(null);
 
-        // 1. Validaciones requeridas
-        const empNoClean = (editingUser.empNo || editingUser.emp_no || '').trim();
-        const nameClean = (editingUser.name || '').trim();
+    try {
+        // 1. Limpieza y validación de campos obligatorios
+        const cleanName = String(editingUser.name || '').trim();
+        const cleanEmpNo = String(editingUser.empNo || editingUser.emp_no || '').trim().toUpperCase();
+        const role = editingUser.systemRole || editingUser.system_role || 'INSPECTOR';
+        const isMatrix = role === 'ADMIN' || role === 'RH';
 
-        if (!empNoClean || !nameClean) {
-            showToast('El No. de Nómina y el Nombre son obligatorios.', 'error');
-            return;
+        if (!cleanEmpNo) {
+            throw new Error('El número de nómina es obligatorio.');
+        }
+        if (!cleanName) {
+            throw new Error('El nombre completo de la persona es obligatorio.');
         }
 
-        try {
+        // 2. Resolver las plantas a IDs reales de la tabla 'plants' usando tu mapper
+        const plantIds = isMatrix ? [] : resolvePlantIds(editingUser.plantId || editingUser.plant_id, plants);
 
-            // 2. Normalización de plantas asignadas (Deduplicación automática)
-            let plantAssignment = editingUser.plantId || editingUser.plant_id;
-            const rawList = Array.isArray(plantAssignment)
-                ? plantAssignment
-                : String(plantAssignment || '').split(',');
+        if (!isMatrix && plantIds.length === 0) {
+            throw new Error('Debes seleccionar al menos una Planta Asignada para este colaborador.');
+        }
 
-            // Deduplicar estrictamente
-            const cleanList = [...new Set(rawList.map(s => String(s).trim().toUpperCase()).filter(Boolean))];
-            plantAssignment = cleanList.join(', ');
+        // 3. Validar el PIN (obligatorio de 6 dígitos en alta; opcional en edición)
+        const cleanPin = String(editingUser.pin || '').trim();
+        if (editingUser.isNew && !/^\d{6}$/.test(cleanPin)) {
+            throw new Error('El PIN de acceso debe tener exactamente 6 dígitos numéricos.');
+        }
+        if (!editingUser.isNew && cleanPin !== '' && !/^\d{6}$/.test(cleanPin)) {
+            throw new Error('Si deseas cambiar el PIN, debe tener exactamente 6 dígitos numéricos.');
+        }
 
-            if (!plantAssignment) {
-                plantAssignment = plants.length > 0 ? (plants[0].code || plants[0].id) : 'BW-SM';
-            }
+        // 4. Armar el payload limpio para la Edge Function 'admin-users'
+        const userPayload = {
+            id: editingUser.id,
+            user_id: editingUser.id,
+            emp_no: cleanEmpNo,
+            empNo: cleanEmpNo,
+            nomina: cleanEmpNo,
+            name: cleanName,
+            nombre: cleanName,
+            system_role: role,
+            systemRole: role,
+            rol: role,
+            position: String(editingUser.position || editingUser.role || 'Inspector de Calidad').trim(),
+            puesto: String(editingUser.position || editingUser.role || 'Inspector de Calidad').trim(),
+            shift: editingUser.shift || (isMatrix ? 'Horario Matriz (08:00 - 17:30)' : 'Turno 1 (06:00 - 14:30)'),
+            turno: editingUser.shift || (isMatrix ? 'Horario Matriz (08:00 - 17:30)' : 'Turno 1 (06:00 - 14:30)'),
+            phone: String(editingUser.phone || '').trim(),
+            telefono: String(editingUser.phone || '').trim(),
+            allow_terminal_switch: Boolean(editingUser.allowTerminalSwitch),
+            allowTerminalSwitch: Boolean(editingUser.allowTerminalSwitch),
+            photo_url: editingUser.avatarUrl || editingUser.photoUrl || null,
+            avatar_url: editingUser.avatarUrl || editingUser.photoUrl || null,
+            plant_ids: plantIds,
+            plantIds: plantIds,
+            plantas: plantIds
+        };
 
-            // 3. Normalizar puesto / cargo (captura position, role, puesto o cargo)
-            const positionClean = (
-                editingUser.position ||
-                editingUser.role ||
-                editingUser.puesto ||
-                editingUser.cargo ||
-                ''
-            ).trim() || (editingUser.systemRole === 'SUPERVISOR' ? 'Supervisor de Planta' : 'Inspector de Calidad');
+        // Solo enviar PIN en 'create' si es nuevo, o por 'reset_pin' si lo escribieron al editar
+        if (editingUser.isNew) {
+            userPayload.pin = cleanPin;
+        }
 
-            // 4. Estructuración del payload para Supabase
-            const payload = {
-                emp_no: empNoClean,
-                name: nameClean,
-                position: positionClean,
-                system_role: (editingUser.systemRole || editingUser.system_role || 'SUPERVISOR').toUpperCase(),
-                plant_id: plantAssignment,
-                shift: editingUser.shift || 'Turno 1 (06:00 - 14:30)',
-                phone: editingUser.phone || '',
-                pin: editingUser.pin || '2001',
-                photo_url: editingUser.photoUrl || editingUser.photo_url || '',
-                status: editingUser.status || 'ACTIVO'
-            };
+        // 5. Llamar a la Edge Function a través de lib/adminUsers.js
+        const action = editingUser.isNew ? 'create' : 'update';
+        const res = await adminUsers(action, {
+            ...userPayload,
+            user: userPayload // Por si la Edge Function desestructura { user } o directo del body
+        });
 
-            // 5. Verificar si el usuario ya existe en Supabase
-            const { data: existingUser } = await supabase
-                .from('system_users')
-                .select('id, emp_no')
-                .eq('emp_no', empNoClean)
-                .maybeSingle();
-
-            let resultData = null;
-            let newGeneratedId = null;
-
-            if (existingUser) {
-                // 🔄 ACTUALIZACIÓN (UPDATE)
-                const { data, error } = await supabase
-                    .from('system_users')
-                    .update(payload)
-                    .eq('emp_no', empNoClean)
-                    .select();
-
-                if (error) {
-                    console.error('Error al actualizar en Supabase:', error);
-                    showToast(`Error al actualizar: ${error.message}`, 'error');
-                    return;
-                }
-                resultData = data;
-            } else {
-                // ➕ ALTA NUEVA (INSERT)
-                newGeneratedId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `usr-${Date.now()}`;
-                const insertPayload = {
-                    id: newGeneratedId,
-                    ...payload
-                };
-
-                const { data, error } = await supabase
-                    .from('system_users')
-                    .insert([insertPayload])
-                    .select();
-
-                if (error) {
-                    console.error('Error al insertar en Supabase:', error);
-                    showToast(`Error al crear usuario: ${error.message}`, 'error');
-                    return;
-                }
-                resultData = data;
-            }
-
-            // 6. Registro en bitácora de auditoría
-            await logAudit(
-                currentUser,
-                existingUser ? 'USER_UPDATED' : 'USER_CREATED',
-                `Colaborador ${payload.name} (${payload.emp_no}) ${existingUser ? 'actualizado' : 'registrado'} con rol ${payload.system_role}.`,
-                plantAssignment
-            );
-
-            // 7. Actualización reactiva instantánea en la interfaz
-            setSystemUsers(prev => {
-                const list = prev || [];
-                const exists = list.some(u => (u.empNo || u.emp_no) === payload.emp_no);
-                if (exists) {
-                    return list.map(u => (u.empNo || u.emp_no) === payload.emp_no
-                        ? {
-                            ...u,
-                            ...payload,
-                            position: positionClean,
-                            role: positionClean,
-                            puesto: positionClean,
-                            empNo: payload.emp_no,
-                            systemRole: payload.system_role,
-                            plantId: payload.plant_id,
-                            photoUrl: payload.photo_url
-                        }
-                        : u
-                    );
-                }
-                return [...list, {
-                    id: resultData?.[0]?.id || newGeneratedId || `usr-${Date.now()}`,
-                    ...payload,
-                    position: positionClean,
-                    role: positionClean,
-                    puesto: positionClean,
-                    empNo: payload.emp_no,
-                    systemRole: payload.system_role,
-                    plantId: payload.plant_id,
-                    photoUrl: payload.photo_url
-                }];
+        // Si estamos editando y el administrador escribió un nuevo PIN de 6 dígitos, lo actualizamos también
+        if (!editingUser.isNew && cleanPin.length === 6) {
+            await adminUsers('reset_pin', {
+                id: editingUser.id,
+                user_id: editingUser.id,
+                pin: cleanPin
             });
-
-            // 8. Cierre de modal y confirmación
-            setIsUserModalOpen(false);
-            setEditingUser(null);
-            showToast(`Usuario ${payload.name} guardado correctamente.`);
-        } catch (err) {
-            console.error('Error inesperado en handleSaveUser:', err);
-            showToast('Ocurrió un error inesperado al procesar el usuario.', 'error');
         }
-    };
+
+        const savedUserId = res?.user?.id || res?.profile?.id || res?.id || editingUser.id;
+
+        // 6. Si el usuario marcó manualmente crear asistencia para HOY
+        if (editingUser.isNew && editingUser.createTodayAttendance && savedUserId && plantIds.length > 0) {
+            const firstPlant = plants.find(p => p.id === plantIds[0]);
+            await supabase.from('attendance_records').insert({
+                inspector_id: savedUserId,
+                emp_no: cleanEmpNo,
+                inspector_name: cleanName,
+                plant_id: plantIds[0],
+                plant_name: firstPlant?.name || '',
+                date: todayStr,
+                status: 'Pendiente',
+                shift: userPayload.shift,
+                validated_by_supervisor: false
+            });
+        }
+
+        // 7. Recargar los perfiles desde Supabase para ver la planta reflejada en la tabla
+        if (typeof fetchInitialData === 'function') {
+            await fetchInitialData();
+        } else {
+            const { data: profs } = await supabase
+                .from('profiles')
+                .select('*, user_plants(plant_id)')
+                .order('emp_no', { ascending: true });
+            if (profs && typeof setSystemUsers === 'function') {
+                setSystemUsers(profs.map(mapProfileRow));
+            }
+        }
+
+        setIsUserModalOpen(false);
+        if (typeof showToast === 'function') {
+            showToast(
+                editingUser.isNew ? `Usuario ${cleanEmpNo} dado de alta.` : `Usuario ${cleanEmpNo} actualizado.`,
+                'success'
+            );
+        }
+
+    } catch (err) {
+        console.error('Error en handleSaveUser:', err);
+        setUserModalError(err.message || 'No se pudo guardar el usuario en Supabase.');
+    } finally {
+        setIsSavingUser(false);
+    }
+};
 
     const handleToggleUserStatus = async (userId) => {
         // 1. Ubicar al usuario
@@ -1214,14 +1231,11 @@ export default function App() {
         const nextActive = !currentIsActive;
 
         // 2. Actualizar en Supabase en la columna oficial 'status'
-        const { error } = await supabase
-            .from('system_users')
-            .update({ status: nextStatus })
-            .eq('emp_no', empNo);
-
-        if (error) {
+        try {
+            await adminUsers('set_status', { id: targetUser.id, status: nextStatus });
+        } catch (error) {
             showToast(`Error al actualizar estatus: ${error.message}`, 'error');
-            console.error('Error en Supabase:', error);
+            console.error(error);
             return;
         }
 
@@ -1248,23 +1262,14 @@ export default function App() {
         if (!confirmDelete) return;
 
         try {
-            const { error } = await supabase
-                .from('system_users')
-                .delete()
-                .eq('emp_no', empNo);
-
-            if (error) {
-                console.error('Error al eliminar en Supabase:', error);
-                showToast(`Error al eliminar: ${error.message}`, 'error');
-                return;
-            }
+            await adminUsers('delete', { id: user.id });
 
             // Actualizar la vista de inmediato
             setSystemUsers(prev => (prev || []).filter(u => (u.empNo || u.emp_no) !== empNo));
             showToast(`Usuario ${user.name} eliminado definitivamente.`);
         } catch (err) {
             console.error('Error al intentar eliminar:', err);
-            showToast('Ocurrió un error al intentar eliminar el registro.', 'error');
+            showToast(err.message || 'Ocurrió un error al intentar eliminar el registro.', 'error');
         }
     };
 
@@ -1677,8 +1682,8 @@ export default function App() {
     />
 )}
 
-                    {/* MODAL 4: ALTA / EDICIÓN DE USUARIOS Y ROLES */}
-                    {isUserModalOpen && editingUser && (
+{/* MODAL 4: ALTA / EDICIÓN DE USUARIOS Y ROLES */}
+{isUserModalOpen && editingUser && (
     <UserModal
         todayStr={todayStr}
         setIsUserModalOpen={setIsUserModalOpen}
@@ -1686,6 +1691,9 @@ export default function App() {
         setEditingUser={setEditingUser}
         plants={plants}
         handleSaveUser={handleSaveUser}
+        isSaving={isSavingUser}
+        errorMessage={userModalError}
+        setUserModalError={setUserModalError}
     />
 )}
 

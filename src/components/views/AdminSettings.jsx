@@ -33,7 +33,7 @@ export default function AdminSettings({
                         <Shield className="w-5 h-5 text-indigo-600" /> Administración de Usuarios (Admin, RH, Supervisores, Inspectores) y Plantas Clientes
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                        Toda alta o modificación actualiza directamente las tablas `system_users` y `plants` en Supabase.
+                        Toda alta o modificación actualiza directamente las tablas `profiles` y `plants` en Supabase.
                     </p>
                 </div>
 
@@ -125,7 +125,7 @@ export default function AdminSettings({
                                 )}
                             </div>
                             <span className="text-slate-500">
-                                Sincronizado directamente con `system_users` en Supabase
+                                Sincronizado directamente con `profiles` en Supabase
                             </span>
                         </div>
 
@@ -219,7 +219,6 @@ export default function AdminSettings({
                                                     </td>
                                                     <td className="p-3.5 font-mono text-[11px]">
                                                         <span className="block text-slate-700">{u.phone || '--'}</span>
-                                                        <span className="text-slate-400">PIN: <strong className="text-slate-700">{u.pin || '1234'}</strong></span>
                                                     </td>
                                                     <td className="p-3.5 text-center">
                                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'
@@ -230,16 +229,33 @@ export default function AdminSettings({
                                                     <td className="p-3.5 text-center">
                                                         <div className="flex items-center justify-center gap-1.5">
                                                             <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setEditingUser({
-                                                                        ...u,
-                                                                        position: userPosition,
-                                                                        puesto: userPosition,
-                                                                        isNew: false
-                                                                    });
-                                                                    setIsUserModalOpen(true);
-                                                                }}
+    type="button"
+    onClick={() => {
+        // Extraer las plantas del usuario, ya sea de user_plants, plantId o plant_id
+        let userPlantsList = [];
+        if (Array.isArray(u.user_plants) && u.user_plants.length > 0) {
+            userPlantsList = u.user_plants.map(up => up.plant_id || up.plants?.code || up.plants?.id);
+        } else if (u.plantId || u.plant_id) {
+            const raw = u.plantId || u.plant_id;
+            userPlantsList = Array.isArray(raw) 
+                ? raw 
+                : String(raw).split(',').map(s => s.trim()).filter(Boolean);
+        }
+
+        // Si decía 'Sin Planta', vaciar para obligar a seleccionar
+        userPlantsList = userPlantsList.filter(p => p !== 'Sin Planta');
+
+        setEditingUser({
+            ...u,
+            plantId: userPlantsList,
+            plant_id: userPlantsList,
+            position: userPosition,
+            puesto: userPosition,
+            isNew: false
+        });
+        if (typeof setUserModalError === 'function') setUserModalError(null);
+        setIsUserModalOpen(true);
+    }}
                                                                 className="bg-slate-100 hover:bg-blue-600 text-slate-700 hover:text-white px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors"
                                                             >
                                                                 Editar

@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserPlus, Users } from 'lucide-react';
+import { UserPlus, Users, X, Loader2, AlertCircle } from 'lucide-react';
 
 export default function UserModal({
     todayStr,
@@ -8,6 +8,9 @@ export default function UserModal({
     setEditingUser,
     plants,
     handleSaveUser,
+    isSaving,
+    errorMessage,
+    setUserModalError
 }) {
     return (
         <div className="fixed inset-0 z-50 bg-slate-900/55 backdrop-blur-sm flex items-center justify-center p-4">
@@ -19,12 +22,22 @@ export default function UserModal({
                     </span>
                     <button
                         type="button"
-                        onClick={() => setIsUserModalOpen(false)}
-                        className="w-6 h-6 rounded-lg hover:bg-white/10 text-white font-bold text-xs"
+                        onClick={() => {
+                            if (typeof setUserModalError === 'function') setUserModalError(null);
+                            setIsUserModalOpen(false);
+                        }}
+                        className="w-6 h-6 rounded-lg hover:bg-white/10 text-white font-bold text-xs flex items-center justify-center"
                     >
                         ✕
                     </button>
                 </div>
+
+                {editingUser._error && (
+                    <div role="alert" className="px-5 py-2.5 bg-red-50 border-b border-red-200 text-red-700 text-xs font-bold flex items-start gap-2">
+                        <span>⚠</span>
+                        <span>{editingUser._error}</span>
+                    </div>
+                )}
 
                 <div className="p-6 space-y-4 text-xs text-slate-800 max-h-[82vh] overflow-y-auto">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -38,7 +51,7 @@ export default function UserModal({
                                     setEditingUser({
                                         ...editingUser,
                                         systemRole: newRole,
-                                        plantId: (newRole === 'ADMIN' || newRole === 'RH') ? 'ALL' : (Array.isArray(editingUser.plantId) ? editingUser.plantId : [firstPlant?.id || 'p1']),
+                                        plantId: (newRole === 'ADMIN' || newRole === 'RH') ? 'ALL' : (Array.isArray(editingUser.plantId) ? editingUser.plantId : [firstPlant?.code || firstPlant?.id || 'BW-SM']),
                                         shift: (newRole === 'ADMIN' || newRole === 'RH') ? 'Horario Matriz (08:00 - 17:30)' : (firstPlant?.shifts?.[0] || 'Turno 1 (06:00 - 14:30)'),
                                         role: newRole === 'ADMIN' ? 'Administrador General' : newRole === 'RH' ? 'Analista de Recursos Humanos' : newRole === 'SUPERVISOR' ? 'Supervisor Residente de Planta' : 'Inspector de Calidad y Sorteo'
                                     });
@@ -51,6 +64,7 @@ export default function UserModal({
                                 <option value="ADMIN">Administrador General (Control Total)</option>
                             </select>
                         </div>
+
                         <div className="sm:col-span-2 bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-2">
                             <label className="text-slate-700 font-bold block">Fotografía del Colaborador (Gafete):</label>
                             <div className="flex items-center gap-4">
@@ -64,7 +78,7 @@ export default function UserModal({
                                 <div className="flex-1 space-y-1.5">
                                     <input
                                         type="text"
-                                        value={editingUser.avatarUrl}
+                                        value={editingUser.avatarUrl || ''}
                                         onChange={(e) => setEditingUser({ ...editingUser, avatarUrl: e.target.value })}
                                         placeholder="Pega URL de imagen (https://...) o carga archivo"
                                         className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono text-slate-800"
@@ -87,11 +101,12 @@ export default function UserModal({
                                 </div>
                             </div>
                         </div>
+
                         <div>
                             <label className="text-slate-700 font-bold block mb-1">2. No. de Nómina / ID Empleado:</label>
                             <input
                                 type="text"
-                                value={editingUser.empNo}
+                                value={editingUser.empNo || ''}
                                 onChange={(e) => setEditingUser({ ...editingUser, empNo: e.target.value })}
                                 placeholder="Ej. NOM-1060 o SUP-2005"
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono font-bold text-slate-900"
@@ -103,7 +118,7 @@ export default function UserModal({
                             <label className="text-slate-700 font-bold block mb-1">3. Nombre Completo de la Persona:</label>
                             <input
                                 type="text"
-                                value={editingUser.name}
+                                value={editingUser.name || ''}
                                 onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
                                 placeholder="Ej. Ing. Juan Carlos Treviño"
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-semibold"
@@ -131,7 +146,7 @@ export default function UserModal({
                             <label className="text-slate-700 font-bold block mb-1">5. Teléfono / WhatsApp (Alertas):</label>
                             <input
                                 type="text"
-                                value={editingUser.phone}
+                                value={editingUser.phone || ''}
                                 onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
                                 placeholder="Ej. 844-415-0000"
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono text-slate-900"
@@ -157,14 +172,12 @@ export default function UserModal({
                             ) : (
                                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 max-h-32 overflow-y-auto space-y-1">
                                     {plants.map(p => {
-                                        // 1. Separar por comas si viene como string y limpiar espacios
                                         const rawPlant = editingUser.plantId || editingUser.plant_id || '';
                                         const currentPlants = (Array.isArray(rawPlant)
                                             ? rawPlant
                                             : String(rawPlant).split(',')
                                         ).map(s => String(s).trim().toUpperCase()).filter(Boolean);
 
-                                        // 2. Verificar si está seleccionada (por id o por código)
                                         const plantKey = (p.code || p.id).toUpperCase();
                                         const isChecked = currentPlants.includes(plantKey) || currentPlants.includes(String(p.id).toUpperCase());
 
@@ -181,12 +194,7 @@ export default function UserModal({
                                                             updated = updated.filter(key => key !== plantKey && key !== String(p.id).toUpperCase());
                                                         }
 
-                                                        // Eliminar duplicados con Set
                                                         const uniquePlants = [...new Set(updated)];
-                                                        if (uniquePlants.length === 0 && plants.length > 0) {
-                                                            uniquePlants.push((plants[0].code || plants[0].id).toUpperCase());
-                                                        }
-
                                                         setEditingUser({
                                                             ...editingUser,
                                                             plantId: uniquePlants
@@ -207,7 +215,7 @@ export default function UserModal({
                             {editingUser.plantId === 'ALL' ? (
                                 <input
                                     type="text"
-                                    value={editingUser.shift}
+                                    value={editingUser.shift || ''}
                                     onChange={(e) => setEditingUser({ ...editingUser, shift: e.target.value })}
                                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900"
                                 />
@@ -219,7 +227,7 @@ export default function UserModal({
                                 >
                                     {(() => {
                                         const primaryPlantId = Array.isArray(editingUser.plantId) ? editingUser.plantId[0] : editingUser.plantId;
-                                        const pl = plants.find(p => p.id === primaryPlantId);
+                                        const pl = plants.find(p => p.id === primaryPlantId || p.code === primaryPlantId);
                                         return (pl?.shifts || ['Turno 1 (06:00 - 14:30)']).map((sh, i) => (
                                             <option key={i} value={sh}>{sh}</option>
                                         ));
@@ -229,14 +237,25 @@ export default function UserModal({
                         </div>
 
                         <div>
-                            <label className="text-slate-700 font-bold block mb-1">8. PIN de Seguridad (4 dígitos):</label>
+                            <label className="text-slate-700 font-bold block mb-1">
+                                {editingUser.isNew ? '8. PIN de acceso (6 dígitos):' : '8. Nuevo PIN (6 dígitos, opcional):'}
+                            </label>
                             <input
                                 type="text"
+                                inputMode="numeric"
                                 maxLength={6}
-                                value={editingUser.pin}
-                                onChange={(e) => setEditingUser({ ...editingUser, pin: e.target.value })}
+                                pattern="\d{6}"
+                                required={Boolean(editingUser.isNew)}
+                                placeholder={editingUser.isNew ? '' : 'Vacío = conservar el actual'}
+                                value={editingUser.pin || ''}
+                                onChange={(e) => setEditingUser({ ...editingUser, pin: e.target.value.replace(/\D/g, '') })}
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono font-bold text-slate-900"
                             />
+                            <span className="text-[10px] text-slate-400">
+                                {editingUser.isNew
+                                    ? 'Anótalo y entrégalo al colaborador: después ya no se puede consultar.'
+                                    : 'Solo escríbelo si quieres reiniciar el PIN de este colaborador.'}
+                            </span>
                         </div>
                     </div>
 
@@ -269,19 +288,44 @@ export default function UserModal({
                         )}
                     </div>
 
-                    <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                    {/* Banner de error visible si la Edge Function rechaza el guardado */}
+                    {errorMessage && (
+                        <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-start gap-2 shadow-sm my-3">
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <span className="block font-bold">Error al registrar usuario:</span>
+                                <span>{errorMessage}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Botonera de acción única */}
+                    <div className="flex justify-end items-center gap-3 pt-4 border-t border-slate-100">
                         <button
                             type="button"
-                            onClick={() => setIsUserModalOpen(false)}
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 font-bold transition-colors"
+                            disabled={isSaving}
+                            onClick={() => {
+                                if (typeof setUserModalError === 'function') setUserModalError(null);
+                                setIsUserModalOpen(false);
+                            }}
+                            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors"
                         >
                             Cancelar
                         </button>
+
                         <button
                             type="submit"
-                            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-white font-bold shadow-sm transition-colors"
+                            disabled={isSaving}
+                            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 rounded-xl text-white font-bold text-xs shadow-sm transition-colors flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
                         >
-                            Guardar Usuario en Supabase
+                            {isSaving ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Guardando en Supabase...</span>
+                                </>
+                            ) : (
+                                <span>Guardar Usuario en Supabase</span>
+                            )}
                         </button>
                     </div>
                 </div>

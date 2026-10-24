@@ -1,6 +1,7 @@
 import React from 'react';
 import { Building2 } from 'lucide-react';
 import { logAudit } from '../lib/audit';
+import { supabase } from '../lib/supabaseClient';
 
 export default function TitleBar({
     currentUser,
@@ -30,6 +31,7 @@ export default function TitleBar({
                     type="button"
                     onClick={async () => {
                         await logAudit(currentUser, 'LOGOUT', 'Cierre de sesión');
+                        await supabase.auth.signOut();
                         setCurrentUser(null);
                         setLoginEmpNo('');
                         setLoginPin('');

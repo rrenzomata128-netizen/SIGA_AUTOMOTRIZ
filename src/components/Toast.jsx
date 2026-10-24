@@ -5,7 +5,7 @@ export default function Toast({
     toast,
 }) {
     return (
-        <div className="fixed bottom-12 right-6 z-50 bg-white/95 backdrop-blur-md text-slate-800 px-4 py-3.5 rounded-xl border border-slate-200 shadow-2xl flex items-start gap-3 max-w-sm">
+        <div className="fixed bottom-12 right-6 z-[100] bg-white/95 backdrop-blur-md text-slate-800 px-4 py-3.5 rounded-xl border border-slate-200 shadow-2xl flex items-start gap-3 max-w-sm">
             {toast.type === 'error' ? (
                 <div className="p-1.5 rounded-lg bg-red-50 text-red-600 flex-shrink-0">
                     <XCircle className="w-5 h-5" />

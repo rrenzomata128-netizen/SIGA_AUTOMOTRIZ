@@ -1,7 +1,7 @@
 import React from 'react';
 import { Building2 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
-import { mapUserRow } from '../lib/mappers';
+import { signInWithEmpNo } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 
 export default function LoginScreen({
@@ -34,33 +34,13 @@ export default function LoginScreen({
                     const cleanPin = String(loginPin).trim();
 
                     try {
-                        // Consultar por nómina o coincidencia numérica
-                        const { data, error } = await supabase
-                            .from('system_users')
-                            .select('*')
-                            .or(`emp_no.eq.${cleanEmpNo},emp_no.ilike.%${cleanEmpNo}%`)
-                            .eq('pin', cleanPin);
-
-                        if (error || !data || data.length === 0) {
-                            setLoginError('Nómina o PIN incorrectos');
+                        const { profile, error } = await signInWithEmpNo(cleanEmpNo, cleanPin);
+                        if (error) {
+                            setLoginError(error);
                             return;
                         }
-
-                        const userFound = data[0];
-
-                        // Verificar estatus activo (soporta 'status' o 'active')
-                        const isUserActive = userFound.status
-                            ? userFound.status === 'ACTIVO'
-                            : userFound.active !== false;
-
-                        if (!isUserActive) {
-                            setLoginError('Este colaborador se encuentra dado de BAJA en el sistema.');
-                            return;
-                        }
-
-                        const mappedUser = mapUserRow(userFound);
-                        setCurrentUser(mappedUser);
-                        logAudit(mappedUser, 'LOGIN', 'Inicio de sesión exitoso').catch(() => { });
+                        setCurrentUser(profile);
+                        logAudit(profile, 'LOGIN', 'Inicio de sesión exitoso').catch(() => { });
                     } catch (err) {
                         console.error('Error durante el login:', err);
                         setLoginError('Ocurrió un error al verificar credenciales.');
@@ -81,9 +61,11 @@ export default function LoginScreen({
                         <label className="text-xs font-bold text-slate-700 block mb-1">PIN</label>
                         <input
                             type="password"
+                            inputMode="numeric"
+                            autoComplete="current-password"
                             value={loginPin}
                             onChange={(e) => setLoginPin(e.target.value)}
-                            placeholder="4 dígitos"
+                            placeholder="6 dígitos"
                             maxLength={6}
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-mono"
                             required

@@ -84,3 +84,40 @@ export const toAttendancePayload = (rec) => ({
     validated_by_supervisor: Boolean(rec.validatedBySupervisor),
     replacement_status: rec.replacementStatus || 'No requerido'
 });
+
+// Perfil (tabla profiles + user_plants) -> forma que usa la interfaz
+export const mapProfileRow = (p) => {
+    const job = p.position || 'Puesto no asignado';
+    const isMatrix = p.system_role === 'ADMIN' || p.system_role === 'RH';
+    const plantIds = (p.user_plants || []).map((x) => x.plant_id);
+    return {
+        id: p.id,
+        empNo: p.emp_no,
+        name: p.name,
+        position: job,
+        role: job,
+        puesto: job,
+        systemRole: p.system_role,
+        plantId: isMatrix ? 'ALL' : plantIds,
+        shift: p.shift,
+        phone: p.phone || '',
+        pin: '',
+        status: p.status || 'ACTIVO',
+        active: p.status === 'ACTIVO',
+        allowTerminalSwitch: Boolean(p.allow_terminal_switch),
+        avatarUrl: p.photo_url || '',
+        photoUrl: p.photo_url || ''
+    };
+};
+
+// Convierte lo que haya en el formulario (ids, códigos, lista o texto con comas) en ids de planta reales
+export const resolvePlantIds = (value, plants = []) => {
+    if (value === 'ALL' || value === null || value === undefined) return [];
+    const keys = (Array.isArray(value) ? value : String(value).split(','))
+        .map((s) => String(s).trim().toUpperCase())
+        .filter(Boolean);
+    const ids = plants
+        .filter((p) => keys.includes(String(p.id).toUpperCase()) || keys.includes(String(p.code).toUpperCase()))
+        .map((p) => p.id);
+    return [...new Set(ids)];
+};

@@ -7,3 +7,5 @@ dist
 .env
 .env.*
 !.env.example
+# Migración: PINs generados y llaves
+pines_nuevos.csv

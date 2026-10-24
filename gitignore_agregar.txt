@@ -1,0 +1,3 @@
+
+# Migración: PINs generados y llaves
+pines_nuevos.csv
