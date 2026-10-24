@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+*.log
+
+# Variables de entorno (nunca subir al repositorio)
+.env
+.env.*
+!.env.example
