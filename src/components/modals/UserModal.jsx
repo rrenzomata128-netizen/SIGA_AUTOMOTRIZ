@@ -1,7 +1,9 @@
 import React from 'react';
 import { UserPlus, Users, X, Loader2, AlertCircle } from 'lucide-react';
+import { compressAvatarImage } from '../../lib/attendanceMetrics';
 
 export default function UserModal({
+    currentUser,
     todayStr,
     setIsUserModalOpen,
     editingUser,
@@ -12,6 +14,7 @@ export default function UserModal({
     errorMessage,
     setUserModalError
 }) {
+    const isAdmin = (currentUser?.systemRole || currentUser?.system_role) === 'ADMIN';
     return (
         <div className="fixed inset-0 z-50 bg-slate-900/55 backdrop-blur-sm flex items-center justify-center p-4">
             <form onSubmit={handleSaveUser} className="bg-white border border-slate-200 rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden">
@@ -61,7 +64,9 @@ export default function UserModal({
                                 <option value="INSPECTOR">Inspector de Calidad / Técnico Operativo</option>
                                 <option value="SUPERVISOR">Supervisor / Encargado de Planta</option>
                                 <option value="RH">Recursos Humanos y Nómina (Matriz)</option>
-                                <option value="ADMIN">Administrador General (Control Total)</option>
+                                {isAdmin && (
+                                    <option value="ADMIN">Administrador General (Control Total)</option>
+                                )}
                             </select>
                         </div>
 
@@ -86,14 +91,19 @@ export default function UserModal({
                                     <input
                                         type="file"
                                         accept="image/*"
-                                        onChange={(e) => {
+                                        onChange={async (e) => {
                                             const file = e.target.files[0];
                                             if (file) {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => {
-                                                    setEditingUser({ ...editingUser, avatarUrl: reader.result });
-                                                };
-                                                reader.readAsDataURL(file);
+                                                try {
+                                                    const compressed = await compressAvatarImage(file);
+                                                    setEditingUser({ ...editingUser, avatarUrl: compressed });
+                                                } catch {
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => {
+                                                        setEditingUser({ ...editingUser, avatarUrl: reader.result });
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                }
                                             }
                                         }}
                                         className="text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"

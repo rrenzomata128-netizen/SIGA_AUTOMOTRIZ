@@ -2,6 +2,7 @@ import React from 'react';
 import { Building2, Plus, Shield, UserPlus, Users } from 'lucide-react';
 
 export default function AdminSettings({
+    currentUser,
     adminSubTab,
     setAdminSubTab,
     roleFilterAdmin,
@@ -19,13 +20,14 @@ export default function AdminSettings({
     handleDeleteUser,
     handleOpenNewPlantModal,
 }) {
+    const isAdmin = (currentUser?.systemRole || currentUser?.system_role) === 'ADMIN';
     return (
         <div className="space-y-5">
             <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
                     <div className="flex items-center gap-2">
                         <span className="bg-indigo-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
-                            Exclusivo Administrador General
+                            {isAdmin ? 'Administrador General' : 'Gestión de Capital Humano (RH)'}
                         </span>
                         <span className="text-xs text-slate-500">Control Maestro de Accesos y Catálogos en Supabase</span>
                     </div>
@@ -227,6 +229,9 @@ export default function AdminSettings({
                                                         </span>
                                                     </td>
                                                     <td className="p-3.5 text-center">
+                                                        {(!isAdmin && (u.systemRole || u.system_role) === 'ADMIN') ? (
+                                                            <span className="text-[11px] font-semibold text-slate-400 italic">Protegido (Admin)</span>
+                                                        ) : (
                                                         <div className="flex items-center justify-center gap-1.5">
                                                             <button
     type="button"
@@ -276,6 +281,7 @@ export default function AdminSettings({
                                                                 Eliminar
                                                             </button>
                                                         </div>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             );

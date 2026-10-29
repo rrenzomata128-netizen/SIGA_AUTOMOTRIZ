@@ -17,7 +17,7 @@ export default function LftModal({
             <div className="bg-white border-2 border-red-500 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
                 <div className="px-5 py-3.5 bg-red-600 text-white font-bold text-xs flex items-center justify-between">
                     <span className="flex items-center gap-2">
-                        <ShieldAlert className="w-4 h-4 text-white" /> ALERTA DE GOBERNANZA: Exceso de Jornada Legal (Art. 66 LFT)
+                        <ShieldAlert className="w-4 h-4 text-white" /> ALERTA DE CALIDAD Y SEGURIDAD: Riesgo por Fatiga Operativa
                     </span>
                     <button
                         type="button"
@@ -35,13 +35,13 @@ export default function LftModal({
                             <span className="font-mono text-red-700">{lftModalData.record.workedHoursFormatted}</span>
                         </div>
                         <p className="text-[11px] leading-relaxed text-red-800">
-                            Esta jornada acumula <strong>+{lftModalData.record.overtimeHours} hrs extraordinarias</strong>. La Ley Federal del Trabajo prohíbe que el tiempo extraordinario exceda de 3 horas diarias. El exceso incrementa el riesgo de accidentes y fatiga visual severa con escape de defectos.
+                            Esta jornada acumula <strong>+{lftModalData.record.overtimeHours} hrs de sobretiempo</strong> (superando el umbral preventivo de 3h diarias). El exceso de jornada incrementa el riesgo de fatiga visual severa, accidentes y escape de defectos en línea.
                         </p>
                     </div>
 
                     <div className="space-y-1.5">
                         <label className="font-bold text-slate-700 block">
-                            1. Motivo Operativo de la Excepción (Auditable por RH y Matriz):
+                            1. Motivo Operativo del Sobretiempo (Auditable por RH y Matriz):
                         </label>
                         <select
                             value={lftReasonCategory}
@@ -81,20 +81,20 @@ export default function LftModal({
                             disabled={lftDetailText.trim().length < 10}
                             onClick={async () => {
                                 const record = lftModalData.record;
-                                const fullJustification = `[EXCESO LFT APROBADO: ${lftReasonCategory}] Motivo: ${lftDetailText.trim()}`;
+                                const fullJustification = `[SOBRETIEMPO EXTENDIDO AUTORIZADO: ${lftReasonCategory}] Motivo: ${lftDetailText.trim()}`;
                                 const updatedComments = `${record.comments || ''} • ${fullJustification}`;
 
                                 await handleValidateAttendance(
                                     record.id,
                                     lftModalData.newStatus,
-                                    `Infracción LFT Justificada: ${lftReasonCategory}`,
+                                    `Sobretiempo Extendido Justificado: ${lftReasonCategory}`,
                                     updatedComments
                                 );
 
                                 await logAudit(
                                     currentUser,
-                                    'LFT_OVERTIME_AUTHORIZED',
-                                    `Exceso LFT (+${record.overtimeHours}h extra) autorizado para ${record.empNo}. ${fullJustification}`,
+                                    'EXTENDED_OVERTIME_AUTHORIZED',
+                                    `Sobretiempo extendido (+${record.overtimeHours}h extra) autorizado para ${record.empNo}. ${fullJustification}`,
                                     record.plantId
                                 );
 

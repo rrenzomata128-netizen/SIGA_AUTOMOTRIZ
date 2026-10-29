@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { logAudit } from './lib/audit';
 import { mapPlantRow, mapProfileRow, resolvePlantIds, mapAttendanceRow, toAttendancePayload } from './lib/mappers';
 import { loadProfile, generatePin } from './lib/auth';
 import { adminUsers } from './lib/adminUsers';
 import { nextEmpNo } from './lib/empNo';
-import { safeRound2, safePercentage, parseTimeToMinutes, formatMinutesToHHMM, parseShiftSchedule, evaluateAttendanceMetrics } from './lib/attendanceMetrics';
+import { safeRound2, safePercentage, parseTimeToMinutes, formatMinutesToHHMM, parseShiftSchedule, evaluateAttendanceMetrics, evaluateLftOvertimeBreakdown, compressAvatarImage, generatePlantQrState, verifyPlantQrInput } from './lib/attendanceMetrics';
 
 
 
@@ -16,21 +16,25 @@ import AdminMenuBar from './components/AdminMenuBar';
 import Toolbar from './components/Toolbar';
 import Sidebar from './components/Sidebar';
 import GlobalFilters from './components/GlobalFilters';
-import ExecutiveDashboard from './components/views/ExecutiveDashboard';
-import PlantsMonitor from './components/views/PlantsMonitor';
-import PayrollView from './components/views/PayrollView';
-import ZeroSlackView from './components/views/ZeroSlackView';
-import AuditLogView from './components/views/AuditLogView';
-import AdminSettings from './components/views/AdminSettings';
+import InspectorMobile from './components/views/InspectorMobile';
 import SupervisorValidation from './components/views/SupervisorValidation';
 import SupervisorQr from './components/views/SupervisorQr';
-import InspectorMobile from './components/views/InspectorMobile';
 import StatusFooter from './components/StatusFooter';
 import LftModal from './components/modals/LftModal';
 import EmployeeDetailModal from './components/modals/EmployeeDetailModal';
 import RecordModal from './components/modals/RecordModal';
 import UserModal from './components/modals/UserModal';
 import PlantModal from './components/modals/PlantModal';
+import PayrollView from './components/views/PayrollView';
+import ExecutiveDashboard from './components/views/ExecutiveDashboard';
+import { exportAttendanceExcel } from './lib/exportAttendanceExcel';
+
+
+// Carga diferida (Code-Splitting) para vistas pesadas de Matriz y Gráficas (optimiza carga móvil 3G/4G para Inspectores)
+const PlantsMonitor = lazy(() => import('./components/views/PlantsMonitor'));
+const ZeroSlackView = lazy(() => import('./components/views/ZeroSlackView'));
+const AuditLogView = lazy(() => import('./components/views/AuditLogView'));
+const AdminSettings = lazy(() => import('./components/views/AdminSettings'));
 
 
 export default function App() {
@@ -42,6 +46,36 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(false);
 
     const [currentRole, setCurrentRole] = useState('admin');
+
+
+    // ... dentro del componente:
+    const handleExportAttendanceExcel = async () => {
+        let startDate = todayStr;
+        let endDate = todayStr;
+        if (dateFilterType === 'YESTERDAY') {
+            startDate = endDate = yesterdayStr;
+        } else if (dateFilterType === 'LAST_7_DAYS') {
+            startDate = getRelativeDateStr(6);
+            endDate = todayStr;
+        } else if (dateFilterType === 'CUSTOM') {
+            startDate = normalizedDateRange.start;
+            endDate = normalizedDateRange.end;
+        }
+
+        const plantName = selectedPlantFilter === 'ALL'
+            ? 'Todas'
+            : plants.find(p => p.id === selectedPlantFilter)?.name || selectedPlantFilter;
+
+        await exportAttendanceExcel(filteredRecords, {
+            startDate,
+            endDate,
+            plantName,
+            shiftFilter: selectedShiftFilter,
+        });
+
+        await logAudit(currentUser, 'EXPORT_ATTENDANCE_EXCEL', `Exportación Excel (${filteredRecords.length} registros)`);
+        showToast('Reporte de asistencia en Excel descargado.');
+    };
 
     // Restaura la sesión de Supabase al recargar la página y cierra la app si la sesión termina
     useEffect(() => {
@@ -149,7 +183,7 @@ export default function App() {
         setTimeout(() => setToast(null), 4000);
     }, []);
 
-    // Funciones de recarga desde Supabase
+    // Funciones de recarga desde Supabase (optimizadas por rol para minimizar Egress en producción)
     const fetchPlants = useCallback(async () => {
         const { data, error } = await supabase.from('plants').select('*').order('code', { ascending: true });
         if (error) {
@@ -160,29 +194,49 @@ export default function App() {
     }, []);
 
     const fetchUsers = useCallback(async () => {
-        const { data, error } = await supabase.from('profiles').select('*, user_plants(plant_id)').order('emp_no', { ascending: true });
+        if (!currentUser) return;
+        const roleUpper = String(currentUser.systemRole || currentUser.system_role || '').toUpperCase();
+        const isPureInspector = roleUpper === 'INSPECTOR' && !currentUser.allowTerminalSwitch;
+
+        // En producción, un inspector en su celular solo descarga su propio perfil y plantas asignadas (ahorra 95% de Egress en fotos Base64)
+        let query = supabase.from('profiles').select('*, user_plants(plant_id)').order('emp_no', { ascending: true });
+        if (isPureInspector && currentUser.id) {
+            query = query.eq('id', currentUser.id);
+        }
+
+        const { data, error } = await query;
         if (error) {
             console.error('Error cargando usuarios:', error);
             return;
         }
         if (data) setSystemUsers(data.map(mapProfileRow));
-    }, []);
+    }, [currentUser]);
 
     const fetchAttendance = useCallback(async () => {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const { data, error } = await supabase
+        if (!currentUser) return;
+        const roleUpper = String(currentUser.systemRole || currentUser.system_role || '').toUpperCase();
+        const isPureInspector = roleUpper === 'INSPECTOR' && !currentUser.allowTerminalSwitch;
+
+        const lookbackDate = new Date();
+        lookbackDate.setDate(lookbackDate.getDate() - (isPureInspector ? 7 : 30));
+
+        let query = supabase
             .from('attendance_records')
             .select('*')
-            .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
+            .gte('date', lookbackDate.toISOString().split('T')[0])
             .order('date', { ascending: false });
 
+        if (isPureInspector && currentUser.id) {
+            query = query.eq('inspector_id', currentUser.id);
+        }
+
+        const { data, error } = await query;
         if (error) {
             console.error('Error cargando asistencias:', error);
             return;
         }
         if (data) setAttendanceRecords(data.map(mapAttendanceRow));
-    }, []);
+    }, [currentUser]);
 
     const handleShiftAbandonment = async (recordId, currentComments) => {
         const targetRecord = attendanceRecords.find(r => r.id === recordId);
@@ -230,27 +284,98 @@ export default function App() {
         loadAllFromDatabase();
     }, [currentUser, fetchPlants, fetchUsers, fetchAttendance, showToast]);
 
-    // Suscripción Realtime en Supabase para plants, profiles y attendance_records
+    // Suscripción Realtime en Supabase para plants, profiles, attendance_records y broadcast de tokens QR
+    const realtimeChannelRef = useRef(null);
+    const [liveBroadcastQrByPlant, setLiveBroadcastQrByPlant] = useState({});
+
+    const broadcastPlantQr = useCallback((qrState) => {
+        if (!qrState?.plantCode || !qrState?.code) return;
+        const cleanPlantCode = String(qrState.plantCode).toUpperCase();
+        setLiveBroadcastQrByPlant(prev => ({ ...prev, [cleanPlantCode]: qrState.code }));
+        if (realtimeChannelRef.current) {
+            realtimeChannelRef.current.send({
+                type: 'broadcast',
+                event: 'qr-sync',
+                payload: { plantId: qrState.plantId, plantCode: cleanPlantCode, code: qrState.code }
+            }).catch(() => {});
+        }
+    }, []);
+
     useEffect(() => {
         if (!currentUser) return;
 
+        let usersDebounceTimer = null;
+        const scheduleFetchUsers = () => {
+            if (usersDebounceTimer) clearTimeout(usersDebounceTimer);
+            usersDebounceTimer = setTimeout(() => {
+                fetchUsers();
+            }, 600);
+        };
+
         const channel = supabase
-            .channel('siga-realtime-all')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, () => {
-                fetchAttendance();
+            .channel('siga-realtime-all', { config: { broadcast: { self: true } } })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, (payload) => {
+                // Actualización quirúrgica en memoria (Delta Realtime) sin volver a descargar los últimos 30 días
+                if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && payload.new) {
+                    const mapped = mapAttendanceRow(payload.new);
+                    setAttendanceRecords(prev => {
+                        const exists = prev.some(r => r.id === mapped.id);
+                        return exists
+                            ? prev.map(r => (r.id === mapped.id ? mapped : r))
+                            : [mapped, ...prev];
+                    });
+                } else if (payload.eventType === 'DELETE' && payload.old?.id) {
+                    setAttendanceRecords(prev => prev.filter(r => r.id !== payload.old.id));
+                } else {
+                    fetchAttendance();
+                }
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-                fetchUsers();
+                scheduleFetchUsers();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'user_plants' }, () => {
-                fetchUsers();
+                scheduleFetchUsers();
             })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'plants' }, () => {
-                fetchPlants();
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'plants' }, (payload) => {
+                if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && payload.new) {
+                    const mapped = mapPlantRow(payload.new);
+                    setPlants(prev => {
+                        const exists = prev.some(p => p.id === mapped.id);
+                        return exists
+                            ? prev.map(p => (p.id === mapped.id ? mapped : p))
+                            : [...prev, mapped];
+                    });
+                } else if (payload.eventType === 'DELETE' && payload.old?.id) {
+                    setPlants(prev => prev.filter(p => p.id !== payload.old.id));
+                } else {
+                    fetchPlants();
+                }
+            })
+            .on('broadcast', { event: 'qr-sync' }, ({ payload }) => {
+                if (payload?.plantCode && payload?.code) {
+                    setLiveBroadcastQrByPlant(prev => ({
+                        ...prev,
+                        [String(payload.plantCode).toUpperCase()]: payload.code
+                    }));
+                }
+            })
+            .on('broadcast', { event: 'inspector-record-sync' }, async ({ payload }) => {
+                // Si una terminal ADMIN o RH está abierta, persiste en BD los cambios de planta del inspector que el trigger antiguo bloqueaba
+                const myRole = String(currentUser?.systemRole || currentUser?.system_role || '').toUpperCase();
+                if ((myRole === 'ADMIN' || myRole === 'RH') && payload?.recordId && payload?.updatedFields) {
+                    await supabase
+                        .from('attendance_records')
+                        .update(payload.updatedFields)
+                        .eq('id', payload.recordId);
+                }
             })
             .subscribe();
 
+        realtimeChannelRef.current = channel;
+
         return () => {
+            if (usersDebounceTimer) clearTimeout(usersDebounceTimer);
+            realtimeChannelRef.current = null;
             supabase.removeChannel(channel);
         };
     }, [currentUser, fetchAttendance, fetchUsers, fetchPlants]);
@@ -329,22 +454,22 @@ export default function App() {
         }
     }, [currentUser, inspectors, selectedInspectorId]);;
 
-    // Estado para el Generador QR Dinámico con cuenta regresiva en vivo
+    // Estado para el Generador QR Dinámico TOTP con cuenta regresiva en vivo
     const [activeQrCode, setActiveQrCode] = useState({
         code: 'QR-AUTH-PLANTA-8941',
+        pin4: '8941',
         secondsLeft: 60,
-        plantId: ''
+        plantId: '',
+        plantCode: 'PLANTA'
     });
 
     useEffect(() => {
-        if (plants.length > 0 && !activeQrCode.plantId) {
-            setActiveQrCode({
-                plantId: plants[0].id,
-                code: `QR-AUTH-${plants[0].code}-${Math.floor(1000 + Math.random() * 9000)}`,
-                secondsLeft: 60
-            });
+        const targetPlants = (allowedPlants && allowedPlants.length > 0) ? allowedPlants : plants;
+        if (targetPlants.length > 0 && (!activeQrCode.plantId || !targetPlants.some(p => p.id === activeQrCode.plantId))) {
+            const nextState = generatePlantQrState(targetPlants[0].id, targetPlants[0].code);
+            setActiveQrCode(nextState);
         }
-    }, [plants, activeQrCode.plantId]);
+    }, [plants, allowedPlants, activeQrCode.plantId]);
 
     const handleRoleChange = (role) => {
         setCurrentRole(role);
@@ -354,50 +479,93 @@ export default function App() {
         showToast(`Sesión cambiada a: ${role === 'admin' ? 'RH y Dirección (Matriz)' : role === 'supervisor' ? 'Supervisor de Planta' : 'Terminal Móvil Inspector'}`);
     };
 
-    // ⏱️ Temporizador optimizado: SOLO corre cuando la pantalla del QR está activa
+    // ⏱️ Temporizador TOTP sincronizado con reloj real: actualiza inmediatamente al abrir la pantalla QR
     useEffect(() => {
-        // Si no está en modo supervisor o la pestaña activa no es la del QR, no hacer nada
         if (currentRole !== 'supervisor' || activeTab !== 'sup-qr') return;
+
+        // Sincronizar de inmediato al entrar a la pestaña para nunca mostrar un PIN antiguo
+        setActiveQrCode(prev => {
+            const plantCode = plants.find(p => p.id === prev.plantId)?.code || 'PLANTA';
+            const freshState = generatePlantQrState(prev.plantId, plantCode, Date.now());
+            broadcastPlantQr(freshState);
+            return freshState;
+        });
 
         const timer = setInterval(() => {
             setActiveQrCode(prev => {
+                const plantCode = plants.find(p => p.id === prev.plantId)?.code || 'PLANTA';
                 if (prev.secondsLeft <= 1) {
-                    const plantCode = plants.find(p => p.id === prev.plantId)?.code || 'PLANTA';
-                    return {
-                        ...prev,
-                        code: `QR-AUTH-${plantCode}-${Math.floor(1000 + Math.random() * 9000)}`,
-                        secondsLeft: 60
-                    };
+                    const nextState = generatePlantQrState(prev.plantId, plantCode, Date.now());
+                    broadcastPlantQr(nextState);
+                    return nextState;
                 }
                 return { ...prev, secondsLeft: prev.secondsLeft - 1 };
             });
         }, 1000);
 
-        // Se limpia automáticamente al salir de la pestaña
         return () => clearInterval(timer);
-    }, [plants, currentRole, activeTab]);
+    }, [plants, currentRole, activeTab, broadcastPlantQr]);
 
     // ==========================================================================
     // ACCIONES DE LA APP MÓVIL DEL INSPECTOR (100% PERSISTIDAS EN SUPABASE)
     // ==========================================================================
-    const handleInspectorTransportCheckIn = async (inspectorId) => {
+    const handleInspectorTransportCheckIn = async (inspectorId, chosenPlantId = null, options = {}) => {
         const insp = inspectors.find(i => i.id === inspectorId);
         if (!insp) return;
         const now = new Date().toTimeString().slice(0, 5);
 
-        // Buscamos si hay un registro de HOY que todavía esté activo (sin hora de salida)
-        const activeExisting = attendanceRecords.find(r => r.inspectorId === inspectorId && r.date === todayStr && !r.departureTime);
+        // Buscamos si hay un registro de HOY (prioridad) o turno nocturno real de AYER que todavía esté activo
+        const activeExisting = attendanceRecords.find(
+            r => r.inspectorId === inspectorId &&
+                r.date === todayStr &&
+                !r.departureTime &&
+                !r.validatedBySupervisor &&
+                r.status !== 'Falta'
+        ) || attendanceRecords.find(
+            r => r.inspectorId === inspectorId &&
+                r.date === yesterdayStr &&
+                !r.departureTime &&
+                !r.validatedBySupervisor &&
+                r.status !== 'Falta' &&
+                Boolean(r.transportCheckIn || r.plantQrScan)
+        );
 
-        const primaryPlantId = Array.isArray(insp.plantId) ? insp.plantId[0] : insp.plantId;
-        const plantName = plants.find(p => p.id === primaryPlantId)?.name || 'Planta';
+        const fallbackPlantKey = Array.isArray(insp.plantId) ? insp.plantId[0] : insp.plantId;
+        const targetPlantKey = chosenPlantId || activeExisting?.plantId || fallbackPlantKey;
+        const plantObj = plants.find(p => p.id === targetPlantKey || p.code === targetPlantKey)
+            || plants.find(p => p.id === fallbackPlantKey || p.code === fallbackPlantKey);
+        const resolvedPlantId = plantObj?.id || targetPlantKey;
+        const plantName = plantObj?.name || 'Planta';
 
         if (activeExisting) {
-            // Si ya hay uno abierto, actualizamos ese
+            const effectiveTime = (options.onlySwitchPlant && activeExisting.transportCheckIn)
+                ? activeExisting.transportCheckIn
+                : now;
+
+            // Si ya hay uno abierto, actualizamos ese incluyendo la planta destino seleccionada
             const updatedFields = {
-                transport_check_in: now,
+                plant_id: resolvedPlantId,
+                plant_name: plantName,
+                transport_check_in: effectiveTime,
                 status: activeExisting.status === 'Falta' ? 'A tiempo' : activeExisting.status,
-                comments: 'Check-in en transporte actualizado desde app móvil.'
+                comments: options.onlySwitchPlant
+                    ? `Planta destino actualizada en ruta hacia ${plantObj?.code || plantName} desde app móvil.`
+                    : `Check-in en transporte hacia ${plantObj?.code || plantName} confirmado desde app móvil.`
             };
+
+            // Actualización optimista inmediata para respuesta instantánea en la UI
+            setAttendanceRecords(prev => prev.map(r =>
+                r.id === activeExisting.id
+                    ? {
+                        ...r,
+                        plantId: resolvedPlantId,
+                        plantName,
+                        transportCheckIn: effectiveTime,
+                        status: updatedFields.status,
+                        comments: updatedFields.comments
+                    }
+                    : r
+            ));
 
             const { error } = await supabase
                 .from('attendance_records')
@@ -405,21 +573,53 @@ export default function App() {
                 .eq('id', activeExisting.id);
 
             if (error) {
-                showToast('Error al actualizar transporte en Supabase', 'error');
-                console.error(error);
-                return;
+                // Si el trigger de BD bloquea el cambio directo de plant_id para el rol INSPECTOR, sincronizar vía canal Realtime con Matriz (ADMIN/RH)
+                if (realtimeChannelRef.current) {
+                    realtimeChannelRef.current.send({
+                        type: 'broadcast',
+                        event: 'inspector-record-sync',
+                        payload: { recordId: activeExisting.id, updatedFields }
+                    }).catch(() => {});
+                }
+                await logAudit(
+                    currentUser,
+                    options.onlySwitchPlant ? 'TRANSPORT_PLANT_CHANGE' : 'TRANSPORT_CHECKIN',
+                    options.onlySwitchPlant
+                        ? `Planta destino cambiada en ruta a ${plantObj?.code || plantName} por ${insp.empNo}`
+                        : `Abordaje confirmado a las ${effectiveTime} por ${insp.empNo} hacia ${plantObj?.code || plantName}`,
+                    resolvedPlantId
+                );
+                if (!options.onlySwitchPlant) {
+                    showToast('Error al actualizar transporte en Supabase', 'error');
+                    return;
+                }
+            } else {
+                await logAudit(
+                    currentUser,
+                    options.onlySwitchPlant ? 'TRANSPORT_PLANT_CHANGE' : 'TRANSPORT_CHECKIN',
+                    options.onlySwitchPlant
+                        ? `Planta destino cambiada en ruta a ${plantObj?.code || plantName} por ${insp.empNo}`
+                        : `Abordaje confirmado a las ${effectiveTime} por ${insp.empNo} hacia ${plantObj?.code || plantName}`,
+                    resolvedPlantId
+                );
+                await fetchAttendance();
             }
 
-            await logAudit(currentUser, 'TRANSPORT_CHECKIN', `Abordaje confirmado a las ${now} por ${insp.empNo}`, primaryPlantId);
-            await fetchAttendance();
+            if (options.onlySwitchPlant) {
+                showToast(`Planta destino actualizada a ${plantObj?.code || plantName}`);
+                return;
+            }
         } else {
-            // Si ya cerró su turno anterior hoy, CREAMOS UNA NUEVA LÍNEA (Jornada Extra / Turno Adicional)
+            // Si no tenía registro hoy o ya cerró su turno anterior hoy, CREAMOS EL REGISTRO CON LA PLANTA ELEGIDA
+            const completedTodayCount = attendanceRecords.filter(r => r.inspectorId === inspectorId && r.date === todayStr && Boolean(r.departureTime)).length;
+            const isExtraShift = completedTodayCount > 0;
+
             const newRec = {
                 id: `att-${Date.now()}`,
                 inspectorId: insp.id,
                 empNo: insp.empNo,
                 inspectorName: insp.name,
-                plantId: primaryPlantId,
+                plantId: resolvedPlantId,
                 plantName,
                 shift: insp.shift,
                 date: todayStr,
@@ -427,8 +627,10 @@ export default function App() {
                 plantQrScan: '',
                 departureTime: '',
                 status: 'A tiempo',
-                incidentReason: 'Turno Adicional / Jornada Extra Mismo Día',
-                comments: 'Inicio de turno extra autorizado.',
+                incidentReason: isExtraShift ? 'Turno Adicional / Jornada Extra Mismo Día' : 'Ninguno',
+                comments: isExtraShift
+                    ? `Inicio de turno extra autorizado hacia ${plantObj?.code || plantName}.`
+                    : `Check-in en transporte hacia ${plantObj?.code || plantName} confirmado desde app móvil.`,
                 validatedBySupervisor: false,
                 replacementStatus: 'No requerido'
             };
@@ -438,21 +640,66 @@ export default function App() {
                 .insert(toAttendancePayload(newRec));
 
             if (error) {
-                showToast('Error al crear nuevo turno extra en Supabase', 'error');
+                showToast('Error al registrar abordaje en Supabase', 'error');
                 console.error(error);
                 return;
             }
 
-            await logAudit(currentUser, 'EXTRA_SHIFT_START', `Nuevo turno extra iniciado a las ${now} por ${insp.empNo}`, primaryPlantId);
+            await logAudit(
+                currentUser,
+                isExtraShift ? 'EXTRA_SHIFT_START' : 'TRANSPORT_CHECKIN',
+                `Abordaje confirmado a las ${now} por ${insp.empNo} hacia ${plantObj?.code || plantName}`,
+                resolvedPlantId
+            );
             await fetchAttendance();
         }
 
-        showToast(`Transporte confirmado a las ${now} para ${insp.name}`);
+        showToast(`Transporte confirmado a las ${now} hacia ${plantObj?.code || plantName} (${insp.name})`);
     };
 
-    const handleInspectorQrScan = async (inspectorId) => {
+    const handleInspectorQrScan = async (inspectorId, enteredQrInput = '', chosenPlantId = null) => {
         const insp = inspectors.find(i => i.id === inspectorId);
-        if (!insp) return;
+        if (!insp) return false;
+
+        // BUSCAR ESTRICTAMENTE EL REGISTRO ACTIVO DE HOY O DE AYER (SOPORTE TURNO NOCTURNO QUE CRUZA MEDIANOCHE)
+        const activeExisting = attendanceRecords.find(
+            r => r.inspectorId === inspectorId &&
+                r.date === todayStr &&
+                !r.departureTime &&
+                !r.validatedBySupervisor &&
+                r.status !== 'Falta'
+        ) || attendanceRecords.find(
+            r => r.inspectorId === inspectorId &&
+                r.date === yesterdayStr &&
+                !r.departureTime &&
+                !r.validatedBySupervisor &&
+                r.status !== 'Falta' &&
+                Boolean(r.transportCheckIn || r.plantQrScan)
+        );
+
+        const fallbackPlantKey = Array.isArray(insp.plantId) ? insp.plantId[0] : insp.plantId;
+        const targetPlantKey = chosenPlantId || activeExisting?.plantId || fallbackPlantKey;
+        const plantObj = plants.find(p => p.id === targetPlantKey || p.code === targetPlantKey)
+            || plants.find(p => p.id === fallbackPlantKey || p.code === fallbackPlantKey);
+        const resolvedPlantId = plantObj?.id || targetPlantKey;
+        const plantName = plantObj?.name || 'Planta';
+        const plantCode = (plantObj?.code || resolvedPlantId || 'PLANTA').toUpperCase();
+
+        // Validar criptográficamente el código QR (TOTP de ventana amplia + Broadcast en vivo del Supervisor)
+        const allBroadcastCodes = [
+            liveBroadcastQrByPlant[plantCode],
+            ...Object.values(liveBroadcastQrByPlant || {}),
+            activeQrCode?.code,
+            activeQrCode?.pin4
+        ].filter(Boolean);
+        const allClusterPlantCodes = plants.map(p => p.code).filter(Boolean);
+        const verification = verifyPlantQrInput(enteredQrInput, plantCode, allBroadcastCodes, Date.now(), allClusterPlantCodes);
+        if (!verification.valid) {
+            showToast(verification.reason, 'error');
+            return false;
+        }
+        const verifiedQrCode = verification.fullCode;
+
         const now = new Date().toTimeString().slice(0, 5);
         const schedule = parseShiftSchedule(insp.shift);
         const nowMins = parseTimeToMinutes(now);
@@ -460,34 +707,68 @@ export default function App() {
         if (diff < -720) diff += 1440;
         const computedStatus = diff > 5 ? 'Retardo' : 'A tiempo';
 
-        const primaryPlantId = Array.isArray(insp.plantId) ? insp.plantId[0] : insp.plantId;
-        const plantName = plants.find(p => p.id === primaryPlantId)?.name || 'Planta';
-
-        // BUSCAR ESTRICTAMENTE EL REGISTRO ACTIVO DE HOY (QUE NO TENGA SALIDA Y NO ESTÉ BLOQUEADO)
-        const activeExisting = attendanceRecords.find(
-            r => r.inspectorId === inspectorId && r.date === todayStr && !r.departureTime && !r.validatedBySupervisor
-        );
-
         if (activeExisting) {
             const updatedFields = {
+                plant_id: resolvedPlantId,
+                plant_name: plantName,
                 plant_qr_scan: now,
                 status: computedStatus,
                 incident_reason: computedStatus === 'Retardo' ? 'Ingreso posterior a hora de inicio' : 'Ninguno',
-                comments: `QR Dinámico (${activeQrCode.code}) validado en línea.`
+                comments: `QR Dinámico (${verifiedQrCode}) validado en línea en ${plantCode}.`
             };
 
-            const { error } = await supabase
+            // Actualización optimista inmediata para reflejar el paso completado sin demora
+            setAttendanceRecords(prev => prev.map(r =>
+                r.id === activeExisting.id
+                    ? {
+                        ...r,
+                        plantId: resolvedPlantId,
+                        plantName,
+                        plantQrScan: now,
+                        status: computedStatus,
+                        incidentReason: updatedFields.incident_reason,
+                        comments: updatedFields.comments
+                    }
+                    : r
+            ));
+
+            let { error } = await supabase
                 .from('attendance_records')
                 .update(updatedFields)
                 .eq('id', activeExisting.id);
 
+            // Si la base de datos tiene activo el trigger antiguo que impide cambiar plant_id a un INSPECTOR:
+            // 1) Guardamos de inmediato plant_qr_scan para que el paso QR quede registrado en BD
+            // 2) Sincronizamos plant_id y plant_name vía canal Realtime con Matriz (ADMIN/RH)
+            if (error) {
+                const fallbackFields = {
+                    plant_qr_scan: now,
+                    status: computedStatus,
+                    incident_reason: updatedFields.incident_reason,
+                    comments: updatedFields.comments
+                };
+                const retryRes = await supabase
+                    .from('attendance_records')
+                    .update(fallbackFields)
+                    .eq('id', activeExisting.id);
+                error = retryRes.error;
+
+                if (realtimeChannelRef.current) {
+                    realtimeChannelRef.current.send({
+                        type: 'broadcast',
+                        event: 'inspector-record-sync',
+                        payload: { recordId: activeExisting.id, updatedFields }
+                    }).catch(() => {});
+                }
+            }
+
             if (error) {
                 showToast('Error al registrar escaneo QR en Supabase', 'error');
                 console.error(error);
-                return;
+                return false;
             }
 
-            await logAudit(currentUser, 'QR_SCAN_ENTRY', `QR escaneado a las ${now} (${computedStatus}) por ${insp.empNo}`, primaryPlantId);
+            await logAudit(currentUser, 'QR_SCAN_ENTRY', `QR (${verifiedQrCode}) escaneado a las ${now} (${computedStatus}) por ${insp.empNo}`, resolvedPlantId);
             await fetchAttendance();
         } else {
             // Si por alguna razón no hay uno activo abierto, creamos una nueva línea limpia
@@ -496,7 +777,7 @@ export default function App() {
                 inspectorId: insp.id,
                 empNo: insp.empNo,
                 inspectorName: insp.name,
-                plantId: primaryPlantId,
+                plantId: resolvedPlantId,
                 plantName,
                 shift: insp.shift,
                 date: todayStr,
@@ -505,7 +786,7 @@ export default function App() {
                 departureTime: '',
                 status: computedStatus,
                 incidentReason: computedStatus === 'Retardo' ? 'Ingreso posterior a hora de inicio' : 'Ninguno',
-                comments: `QR Dinámico (${activeQrCode.code}) validado en línea.`,
+                comments: `QR Dinámico (${verifiedQrCode}) validado en línea en ${plantCode}.`,
                 validatedBySupervisor: false,
                 replacementStatus: 'No requerido'
             };
@@ -517,14 +798,15 @@ export default function App() {
             if (error) {
                 showToast('Error al insertar escaneo QR en Supabase', 'error');
                 console.error(error);
-                return;
+                return false;
             }
 
-            await logAudit(currentUser, 'QR_SCAN_ENTRY', `Ingreso directo con QR a las ${now} (${computedStatus}) por ${insp.empNo}`, primaryPlantId);
+            await logAudit(currentUser, 'QR_SCAN_ENTRY', `Ingreso directo con QR (${verifiedQrCode}) a las ${now} (${computedStatus}) por ${insp.empNo}`, resolvedPlantId);
             await fetchAttendance();
         }
 
-        showToast(`QR escaneado y guardado a las ${now} (${computedStatus})`);
+        showToast(`QR (${verifiedQrCode}) validado y guardado a las ${now} (${computedStatus})`);
+        return true;
     };
 
     const handleInspectorDeparture = async (inspectorId) => {
@@ -560,30 +842,21 @@ export default function App() {
         }
     };
 
-    // Función para que el usuario suba su propia foto si no la tiene
+    // Función para que el usuario suba su propia foto si no la tiene (con compresión en cliente)
     const handleUploadMyAvatar = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-            const base64Image = reader.result;
-
-            // Se guarda mediante la función de servidor (solo permite subirla una vez)
-            try {
-                await adminUsers('set_my_photo', { photoUrl: base64Image });
-            } catch (error) {
-                showToast(error.message || 'Error al subir la fotografía', 'error');
-                console.error(error);
-                return;
-            }
-
-            // Actualizar estado local del usuario actual y la lista de usuarios
+        try {
+            const base64Image = await compressAvatarImage(file);
+            await adminUsers('set_my_photo', { photoUrl: base64Image });
             setCurrentUser(prev => ({ ...prev, avatarUrl: base64Image }));
             await fetchUsers();
             showToast('¡Fotografía guardada exitosamente! Tu perfil ha quedado bloqueado.');
-        };
-        reader.readAsDataURL(file);
+        } catch (error) {
+            showToast(error.message || 'Error al subir la fotografía', 'error');
+            console.error(error);
+        }
     };
 
     // ==========================================================================
@@ -635,6 +908,50 @@ export default function App() {
             statusApplied: newStatus,
             message: `Se ha registrado la validación "${newStatus === 'A tiempo' ? 'Validar OK (A tiempo)' : newStatus}" para el colaborador en la base de datos. A partir de este momento el registro queda SELLADO y BLOQUEADO.`
         });
+    };
+
+    // Validación Masiva en 1 Clic para Turnos Normales sin Riesgo ni Incidencias
+    const handleBulkValidateOk = async (recordsToValidate) => {
+        const eligibleRecords = (recordsToValidate || []).filter(rec => {
+            const hasRisk = rec.overtimeHours > 3 || rec.workedHoursDecimal > 12;
+            return !rec.validatedBySupervisor && Boolean(rec.departureTime) && rec.status === 'A tiempo' && !hasRisk;
+        });
+
+        if (eligibleRecords.length === 0) {
+            showToast('No hay turnos normales pendientes listos para validar en bloque', 'warning');
+            return;
+        }
+
+        let successCount = 0;
+        await Promise.all(
+            eligibleRecords.map(async (rec) => {
+                const cleanComment = (rec.comments || '').replace(' [Validado por Supervisor]', '');
+                const { error } = await supabase
+                    .from('attendance_records')
+                    .update({
+                        status: 'A tiempo',
+                        incident_reason: 'Ninguno',
+                        comments: `${cleanComment} [Validado por Supervisor]`,
+                        validated_by_supervisor: true
+                    })
+                    .eq('id', rec.id);
+
+                if (!error) successCount += 1;
+            })
+        );
+
+        if (successCount > 0) {
+            await logAudit(
+                currentUser,
+                'BULK_VALIDATE_ATTENDANCE',
+                `Validación masiva OK de ${successCount} turno(s) regulares sin riesgo`,
+                selectedPlantFilter
+            );
+            await fetchAttendance();
+            showToast(`✅ Se validaron y bloquearon ${successCount} turno(s) regulares correctamente`, 'success');
+        } else {
+            showToast('Error al ejecutar la validación masiva en Supabase', 'error');
+        }
     };
 
     // Asignación de Inspector Comodín en Alertas Cero Holgura (Persistido en Supabase)
@@ -740,65 +1057,7 @@ export default function App() {
         });
     }, [periodRecords, selectedPlantFilter, selectedShiftFilter, selectedStatusFilter, searchQuery, currentRole, currentUser]);
 
-    // 3. Totales Aritméticos Globales
-    const globalMetrics = useMemo(() => {
-        const totalRecords = filteredRecords.length;
-        const onTimeCount = filteredRecords.filter(r => r.status === 'A tiempo').length;
-        const lateCount = filteredRecords.filter(r => r.status === 'Retardo').length;
-        const absentCount = filteredRecords.filter(r => r.status === 'Falta').length;
-        const presentCount = onTimeCount + lateCount;
-        const qrVerifiedCount = filteredRecords.filter(r => r.hasQrEntry).length;
-        const transportBoardedCount = filteredRecords.filter(r => r.hasTransport).length;
-        const supervisorValidatedCount = filteredRecords.filter(r => r.validatedBySupervisor).length;
-        const lftViolationCount = filteredRecords.filter(r => r.overtimeHours > 3 || r.workedHoursDecimal > 12).length;
-
-        const totalRegularMinutes = filteredRecords.reduce((acc, r) => acc + r.regularMinutes, 0);
-        const totalOvertimeMinutes = filteredRecords.reduce((acc, r) => acc + r.overtimeMinutes, 0);
-        const totalWorkedMinutes = totalRegularMinutes + totalOvertimeMinutes;
-        const totalLateMinutes = filteredRecords.reduce((acc, r) => acc + r.lateMinutes, 0);
-
-        const totalRegularHours = safeRound2(totalRegularMinutes / 60);
-        const totalOvertimeHours = safeRound2(totalOvertimeMinutes / 60);
-        const totalPayrollHours = safeRound2(totalRegularHours + totalOvertimeHours);
-
-        const regularCostMXN = safeRound2(totalRegularHours * hourlyRateMXN);
-        const overtimeCostMXN = safeRound2(totalOvertimeHours * hourlyRateMXN * overtimeMultiplier);
-        const totalEstimatedPayrollMXN = safeRound2(regularCostMXN + overtimeCostMXN);
-
-        const attendanceRatePct = safePercentage(presentCount, totalRecords, 1);
-        const punctualityRatePct = safePercentage(onTimeCount, totalRecords, 1);
-        const lateRatePct = safePercentage(lateCount, totalRecords, 1);
-        const absenteeismRatePct = safePercentage(absentCount, totalRecords, 1);
-
-        return {
-            totalRecords,
-            onTimeCount,
-            lateCount,
-            absentCount,
-            presentCount,
-            qrVerifiedCount,
-            transportBoardedCount,
-            supervisorValidatedCount,
-            totalRegularMinutes,
-            totalOvertimeMinutes,
-            totalWorkedMinutes,
-            totalLateMinutes,
-            totalRegularHours,
-            totalOvertimeHours,
-            totalPayrollHours,
-            totalFormattedHHMM: formatMinutesToHHMM(totalWorkedMinutes),
-            regularCostMXN,
-            overtimeCostMXN,
-            totalEstimatedPayrollMXN,
-            attendanceRatePct,
-            punctualityRatePct,
-            lateRatePct,
-            absenteeismRatePct,
-            lftViolationCount
-        };
-    }, [filteredRecords, hourlyRateMXN, overtimeMultiplier]);
-
-    // 4. Concentrado de Prenómina por Empleado
+    // 3. Concentrado de Prenómina por Empleado con desglose LFT (Art. 66-68: Dobles 2x hasta 9h/semana y Triples 3x excedente)
     const payrollByInspector = useMemo(() => {
         const grouped = filteredRecords.reduce((acc, rec) => {
             if (!acc[rec.inspectorId]) {
@@ -835,24 +1094,30 @@ export default function App() {
             return acc;
         }, {});
 
-        // Ordenar las sesiones cronológicamente según el orden en que fueron guardadas
+        // Ordenar las sesiones cronológicamente
         Object.values(grouped).forEach(emp => {
-            emp.sessions.sort((a, b) => a.id.localeCompare(b.id));
+            emp.sessions.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
         });
 
         return Object.values(grouped).map(emp => {
-            // ⚖️ Detección de jornadas que violan la LFT (>3h extra o >12h jornada)
+            // ⚖️ Detección de jornadas que violan la LFT (>3h extra diarias o >12h jornada o >9h extra semanales)
+            const lftBreakdown = evaluateLftOvertimeBreakdown(emp.sessions);
             const lftRiskSessions = emp.sessions.filter(s => s.overtimeHours > 3 || s.workedHoursDecimal > 12);
-            const hasLftRisk = lftRiskSessions.length > 0;
-            const totalLftRiskCount = lftRiskSessions.length;
+            const hasLftRisk = lftRiskSessions.length > 0 || lftBreakdown.tripleOvertimeMinutes > 0;
+            const totalLftRiskCount = lftRiskSessions.length + (lftBreakdown.tripleOvertimeMinutes > 0 && lftRiskSessions.length === 0 ? 1 : 0);
             const uniqueWorkedDays = new Set(emp.sessions.filter(s => s.status !== 'Falta').map(s => s.date)).size;
             const uniqueScheduledDays = new Set(emp.sessions.map(s => s.date)).size;
 
             const totalRegularHours = safeRound2(emp.regularMinutes / 60);
             const totalOvertimeHours = safeRound2(emp.overtimeMinutes / 60);
             const totalHours = safeRound2(totalRegularHours + totalOvertimeHours);
+
             const regularPay = safeRound2(totalRegularHours * hourlyRateMXN);
-            const overtimePay = safeRound2(totalOvertimeHours * hourlyRateMXN * overtimeMultiplier);
+            const doubleOvertimePay = safeRound2(lftBreakdown.doubleOvertimeHours * hourlyRateMXN * 2);
+            const tripleOvertimePay = safeRound2(lftBreakdown.tripleOvertimeHours * hourlyRateMXN * 3);
+            const overtimePay = overtimeMultiplier === 0
+                ? safeRound2(doubleOvertimePay + tripleOvertimePay)
+                : safeRound2(totalOvertimeHours * hourlyRateMXN * overtimeMultiplier);
             const totalPayMXN = safeRound2(regularPay + overtimePay);
 
             return {
@@ -863,9 +1128,15 @@ export default function App() {
                 daysWorked: uniqueWorkedDays,
                 totalRegularHours,
                 totalOvertimeHours,
+                doubleOvertimeHours: lftBreakdown.doubleOvertimeHours,
+                tripleOvertimeHours: lftBreakdown.tripleOvertimeHours,
+                doubleOvertimeMinutes: lftBreakdown.doubleOvertimeMinutes,
+                tripleOvertimeMinutes: lftBreakdown.tripleOvertimeMinutes,
                 totalHours,
                 formattedTotalHHMM: formatMinutesToHHMM(emp.workedMinutes),
                 regularPay,
+                doubleOvertimePay,
+                tripleOvertimePay,
                 overtimePay,
                 totalPayMXN,
                 attendancePct: safePercentage(uniqueWorkedDays, uniqueScheduledDays, 0)
@@ -873,7 +1144,80 @@ export default function App() {
         });
     }, [filteredRecords, hourlyRateMXN, overtimeMultiplier]);
 
-    // 5. Estadísticas por Modalidad de Turno
+    // 4. Totales Aritméticos Globales (Cuadre exacto vertical y horizontal sobre la Cédula de Prenómina)
+    const globalMetrics = useMemo(() => {
+        const totalRecords = filteredRecords.length;
+        const onTimeCount = filteredRecords.filter(r => r.status === 'A tiempo').length;
+        const lateCount = filteredRecords.filter(r => r.status === 'Retardo').length;
+        const absentCount = filteredRecords.filter(r => r.status === 'Falta').length;
+        const presentCount = onTimeCount + lateCount;
+        const qrVerifiedCount = filteredRecords.filter(r => r.hasQrEntry).length;
+        const transportBoardedCount = filteredRecords.filter(r => r.hasTransport).length;
+        const supervisorValidatedCount = filteredRecords.filter(r => r.validatedBySupervisor).length;
+        const lftViolationCount = filteredRecords.filter(r => r.overtimeHours > 3 || r.workedHoursDecimal > 12).length;
+
+        const totalRegularMinutes = filteredRecords.reduce((acc, r) => acc + r.regularMinutes, 0);
+        const totalOvertimeMinutes = filteredRecords.reduce((acc, r) => acc + r.overtimeMinutes, 0);
+        const totalWorkedMinutes = totalRegularMinutes + totalOvertimeMinutes;
+        const totalLateMinutes = filteredRecords.reduce((acc, r) => acc + r.lateMinutes, 0);
+
+        // Calcular horas directamente de los minutos acumulados (8h 10m = 490 / 60 = 8.17 hrs)
+        const totalRegularHours = safeRound2(totalRegularMinutes / 60);
+        const totalOvertimeHours = safeRound2(totalOvertimeMinutes / 60);
+        const totalPayrollHours = safeRound2(totalRegularHours + totalOvertimeHours);
+
+        const totalDoubleOvertimeHours = safeRound2(
+            payrollByInspector.reduce((acc, e) => acc + (e.doubleOvertimeHours || 0), 0)
+        );
+        const totalTripleOvertimeHours = safeRound2(
+            payrollByInspector.reduce((acc, e) => acc + (e.tripleOvertimeHours || 0), 0)
+        );
+
+        // Multiplicación directa (Horas de la Tarjeta × Tarifa Base × Factor) para que cuadre al centavo con calculadora manual
+        const regularCostMXN = safeRound2(totalRegularHours * hourlyRateMXN);
+        const overtimeCostMXN = overtimeMultiplier === 0
+            ? safeRound2((totalDoubleOvertimeHours * hourlyRateMXN * 2) + (totalTripleOvertimeHours * hourlyRateMXN * 3))
+            : safeRound2(totalOvertimeHours * hourlyRateMXN * overtimeMultiplier);
+        const totalEstimatedPayrollMXN = safeRound2(regularCostMXN + overtimeCostMXN);
+
+        const attendanceRatePct = safePercentage(presentCount, totalRecords, 1);
+        const punctualityRatePct = safePercentage(onTimeCount, totalRecords, 1);
+        const lateRatePct = safePercentage(lateCount, totalRecords, 1);
+        const absenteeismRatePct = totalRecords > 0
+            ? Math.max(0, safeRound2(100 - punctualityRatePct - lateRatePct))
+            : 0;
+
+        return {
+            totalRecords,
+            onTimeCount,
+            lateCount,
+            absentCount,
+            presentCount,
+            qrVerifiedCount,
+            transportBoardedCount,
+            supervisorValidatedCount,
+            totalRegularMinutes,
+            totalOvertimeMinutes,
+            totalWorkedMinutes,
+            totalLateMinutes,
+            totalRegularHours,
+            totalOvertimeHours,
+            totalDoubleOvertimeHours,
+            totalTripleOvertimeHours,
+            totalPayrollHours,
+            totalFormattedHHMM: formatMinutesToHHMM(totalWorkedMinutes),
+            regularCostMXN,
+            overtimeCostMXN,
+            totalEstimatedPayrollMXN,
+            attendanceRatePct,
+            punctualityRatePct,
+            lateRatePct,
+            absenteeismRatePct,
+            lftViolationCount
+        };
+    }, [filteredRecords, payrollByInspector, hourlyRateMXN, overtimeMultiplier]);
+
+    // 5. Estadísticas por Modalidad de Turno (Sincronizadas con todos los filtros activos, excepto Turno para permitir cambiar entre tarjetas)
     const shiftCategories = [
         { key: 'T1', label: 'Turno 1 (Matutino 8h)', horario: '06:00 - 14:30', matcher: (s) => s.includes('Turno 1') && !s.includes('18:00') },
         { key: 'T2', label: 'Turno 2 (Vespertino 8h)', horario: '14:00 - 22:30', matcher: (s) => s.includes('Turno 2') && !s.includes('06:00') },
@@ -882,8 +1226,18 @@ export default function App() {
     ];
 
     const shiftStats = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
         return shiftCategories.map(cat => {
-            const recs = periodRecords.filter(r => (selectedPlantFilter === 'ALL' || r.plantId === selectedPlantFilter) && cat.matcher(r.shift));
+            const recs = periodRecords.filter(rec => {
+                const matchesPlant = selectedPlantFilter === 'ALL' || rec.plantId === selectedPlantFilter;
+                const matchesStatus = selectedStatusFilter === 'ALL' || rec.status === selectedStatusFilter;
+                const matchesSearch = !q ||
+                    (rec.inspectorName && rec.inspectorName.toLowerCase().includes(q)) ||
+                    (rec.empNo && rec.empNo.toLowerCase().includes(q)) ||
+                    (rec.plantName && rec.plantName.toLowerCase().includes(q)) ||
+                    (rec.comments && rec.comments.toLowerCase().includes(q));
+                return matchesPlant && matchesStatus && matchesSearch && cat.matcher(rec.shift || '');
+            });
             const onTime = recs.filter(r => r.status === 'A tiempo').length;
             const late = recs.filter(r => r.status === 'Retardo').length;
             const absent = recs.filter(r => r.status === 'Falta').length;
@@ -894,14 +1248,14 @@ export default function App() {
             const attendanceRate = total > 0 ? safePercentage(onTime + late, total, 0) : 100;
             return { ...cat, total, onTime, late, absent, totalHours, attendanceRate };
         });
-    }, [periodRecords, selectedPlantFilter]);
+    }, [periodRecords, selectedPlantFilter, selectedStatusFilter, searchQuery]);
 
-    // 6. Estadísticas por Planta Cliente
+    // 6. Estadísticas por Planta Cliente (Alimentadas directamente de filteredRecords para cuadrar 100% con los filtros de Turno, Estatus y Búsqueda)
     const plantMonitorStats = useMemo(() => {
         return plants
             .filter(p => selectedPlantFilter === 'ALL' || p.id === selectedPlantFilter)
             .map(plant => {
-                const recs = periodRecords.filter(r => r.plantId === plant.id);
+                const recs = filteredRecords.filter(r => r.plantId === plant.id);
                 const onTime = recs.filter(r => r.status === 'A tiempo').length;
                 const late = recs.filter(r => r.status === 'Retardo').length;
                 const absent = recs.filter(r => r.status === 'Falta').length;
@@ -916,7 +1270,12 @@ export default function App() {
                 const plantOvertimeHours = safeRound2(extMins / 60);
                 const plantHours = safeRound2(plantRegularHours + plantOvertimeHours);
 
-                const byShift = (plant.shifts || []).map(sh => {
+                // Incluir tanto los turnos configurados en el catálogo de planta como cualquier turno presente en los registros filtrados
+                const configuredShifts = Array.isArray(plant.shifts) ? plant.shifts : [];
+                const activeRecordShifts = recs.map(r => r.shift).filter(Boolean);
+                const allPlantShifts = [...new Set([...configuredShifts, ...activeRecordShifts])];
+
+                const byShift = allPlantShifts.map(sh => {
                     const shRecs = recs.filter(r => r.shift === sh);
                     const shReg = shRecs.reduce((s, r) => s + r.regularMinutes, 0);
                     const shExt = shRecs.reduce((s, r) => s + r.overtimeMinutes, 0);
@@ -958,7 +1317,7 @@ export default function App() {
                     absentBarPct
                 };
             });
-    }, [plants, periodRecords, selectedPlantFilter]);
+    }, [plants, filteredRecords, selectedPlantFilter]);
 
     // 7. Datasets para el Centro de Gráficas
     const chartDataByDate = useMemo(() => {
@@ -1176,30 +1535,28 @@ const handleSaveUser = async (e) => {
         if (editingUser.isNew && editingUser.createTodayAttendance && savedUserId && plantIds.length > 0) {
             const firstPlant = plants.find(p => p.id === plantIds[0]);
             await supabase.from('attendance_records').insert({
+                id: `att-${Date.now()}`,
                 inspector_id: savedUserId,
                 emp_no: cleanEmpNo,
                 inspector_name: cleanName,
                 plant_id: plantIds[0],
                 plant_name: firstPlant?.name || '',
                 date: todayStr,
-                status: 'Pendiente',
+                transport_check_in: '',
+                plant_qr_scan: '',
+                departure_time: '',
+                status: 'A tiempo',
+                incident_reason: 'Ninguno',
+                comments: 'Registro de turno programado en alta de usuario.',
+                replacement_status: 'No requerido',
                 shift: userPayload.shift,
                 validated_by_supervisor: false
             });
+            await fetchAttendance();
         }
 
         // 7. Recargar los perfiles desde Supabase para ver la planta reflejada en la tabla
-        if (typeof fetchInitialData === 'function') {
-            await fetchInitialData();
-        } else {
-            const { data: profs } = await supabase
-                .from('profiles')
-                .select('*, user_plants(plant_id)')
-                .order('emp_no', { ascending: true });
-            if (profs && typeof setSystemUsers === 'function') {
-                setSystemUsers(profs.map(mapProfileRow));
-            }
-        }
+        await fetchUsers();
 
         setIsUserModalOpen(false);
         if (typeof showToast === 'function') {
@@ -1273,8 +1630,12 @@ const handleSaveUser = async (e) => {
         }
     };
 
-    // Llave Maestra del Administrador: Desbloquear validación en Supabase
+    // Llave Maestra del Administrador: Desbloquear validación en Supabase (Exclusivo ADMIN)
     const handleAdminUnlockRecord = async (recordId) => {
+        if ((currentUser?.systemRole || currentUser?.system_role) !== 'ADMIN') {
+            showToast('Operación exclusiva del Administrador General.', 'error');
+            return;
+        }
         const targetRecord = attendanceRecords.find(r => r.id === recordId);
         if (!targetRecord) return;
 
@@ -1384,9 +1745,9 @@ const handleSaveUser = async (e) => {
         }
     };
 
-    // Exportación real de CSV para RH
+    // Exportación real de CSV para RH (100% enfocada en asistencia y horas laboradas, sin importes monetarios)
     const handleExportPayrollCSV = async () => {
-        const headers = ['No_Nomina', 'Inspector', 'Planta', 'Turno', 'Dias_Programados', 'Dias_Laborados', 'Retardos', 'Faltas', 'Minutos_Retardo', 'Horas_Ordinarias', 'Horas_Extra', 'Total_Horas_Nomina', 'Importe_Estimado_MXN'];
+        const headers = ['No_Nomina', 'Inspector', 'Planta', 'Turno', 'Dias_Programados', 'Dias_Laborados', 'Retardos', 'Faltas', 'Minutos_Retardo', 'Horas_Ordinarias', 'Horas_Extra_Estandar', 'Horas_Extra_Excedente', 'Horas_Extra_Totales', 'Total_Horas_Prenomina'];
         const rows = payrollByInspector.map(emp => [
             emp.empNo,
             `"${emp.inspectorName}"`,
@@ -1398,9 +1759,10 @@ const handleSaveUser = async (e) => {
             emp.absentDays,
             emp.totalLateMinutes,
             emp.totalRegularHours,
+            emp.doubleOvertimeHours || 0,
+            emp.tripleOvertimeHours || 0,
             emp.totalOvertimeHours,
-            emp.totalHours,
-            emp.totalPayMXN
+            emp.totalHours
         ].join(','));
         const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
         const encodedUri = encodeURI(csvContent);
@@ -1462,7 +1824,7 @@ const handleSaveUser = async (e) => {
 )}
 
                         {/* BARRA DE HERRAMIENTAS PRINCIPAL Y SELECTOR DE MODO DE TERMINAL */}
-                        <Toolbar currentUser={currentUser} currentRole={currentRole} handleRoleChange={handleRoleChange} />
+                        <Toolbar currentUser={currentUser} currentRole={currentRole} handleRoleChange={handleRoleChange} plants={plants} />
 
                         {/* CUERPO PRINCIPAL: NAVIGATIONVIEW + ÁREA DE CONTENIDO */}
                         <div className="flex-1 flex flex-col lg:flex-row bg-[#F3F3F3] overflow-hidden">
@@ -1511,6 +1873,11 @@ const handleSaveUser = async (e) => {
     />
 )}
 
+                                <Suspense fallback={
+                                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 font-semibold">
+                                        Cargando módulo operativo...
+                                    </div>
+                                }>
                                 {/* PANTALLA 1: RESUMEN EJECUTIVO Y ANALÍTICA */}
                                 {currentRole === 'admin' && activeTab === 'executive' && (
     <ExecutiveDashboard
@@ -1518,12 +1885,17 @@ const handleSaveUser = async (e) => {
         setSelectedChartType={setSelectedChartType}
         selectedShiftFilter={selectedShiftFilter}
         setSelectedShiftFilter={setSelectedShiftFilter}
+        selectedPlantFilter={selectedPlantFilter}
+        setSelectedPlantFilter={setSelectedPlantFilter}
         filteredRecords={filteredRecords}
         globalMetrics={globalMetrics}
         shiftStats={shiftStats}
         chartDataByDate={chartDataByDate}
         chartDataByPlant={chartDataByPlant}
         pieDistributionData={pieDistributionData}
+        plants={plants}
+        systemUsers={systemUsers}
+        showToast={showToast}
     />
 )}
 
@@ -1542,13 +1914,12 @@ const handleSaveUser = async (e) => {
                                 {/* PANTALLA 3: PRENÓMINA Y CONTROL DE HORAS */}
                                 {currentRole === 'admin' && activeTab === 'hr-payroll' && (
     <PayrollView
-        hourlyRateMXN={hourlyRateMXN}
-        setHourlyRateMXN={setHourlyRateMXN}
-        overtimeMultiplier={overtimeMultiplier}
         setSelectedEmployeeDetail={setSelectedEmployeeDetail}
         globalMetrics={globalMetrics}
         payrollByInspector={payrollByInspector}
         handleExportPayrollCSV={handleExportPayrollCSV}
+        handleExportAttendanceExcel={handleExportAttendanceExcel}   // ← agrega esta
+        plants={plants}
     />
 )}
 
@@ -1560,6 +1931,7 @@ const handleSaveUser = async (e) => {
                                 {/* PANTALLA 5: BITÁCORA MAESTRA DE AUDITORÍA Y TRAZABILIDAD */}
                                 {currentRole === 'admin' && activeTab === 'audit-log' && (
     <AuditLogView
+        currentUser={currentUser}
         todayStr={todayStr}
         setIsRecordModalOpen={setIsRecordModalOpen}
         setEditingRecord={setEditingRecord}
@@ -1574,6 +1946,7 @@ const handleSaveUser = async (e) => {
                                 {/* PANTALLA 6: CENTRO DE ADMINISTRACIÓN DE USUARIOS, ROLES Y PLANTAS */}
                                 {currentRole === 'admin' && activeTab === 'admin-settings' && (
     <AdminSettings
+        currentUser={currentUser}
         adminSubTab={adminSubTab}
         setAdminSubTab={setAdminSubTab}
         roleFilterAdmin={roleFilterAdmin}
@@ -1592,10 +1965,12 @@ const handleSaveUser = async (e) => {
         handleOpenNewPlantModal={handleOpenNewPlantModal}
     />
 )}
+                                </Suspense>
 
                                 {/* VISTA DEL SUPERVISOR DE PLANTA (AGRUPADA POR EMPLEADO EN FORMATO DE LISTA LIMPIA) */}
                                 {currentRole === 'supervisor' && activeTab === 'sup-validation' && (
     <SupervisorValidation
+        currentUser={currentUser}
         setLftModalData={setLftModalData}
         selectedPlantFilter={selectedPlantFilter}
         setSelectedPlantFilter={setSelectedPlantFilter}
@@ -1608,9 +1983,15 @@ const handleSaveUser = async (e) => {
         customEndDate={customEndDate}
         setCustomEndDate={setCustomEndDate}
         plants={plants}
+        allowedPlants={allowedPlants}
         showToast={showToast}
         handleShiftAbandonment={handleShiftAbandonment}
         handleValidateAttendance={handleValidateAttendance}
+        handleBulkValidateOk={handleBulkValidateOk}
+        selectedShiftFilter={selectedShiftFilter}
+        setSelectedShiftFilter={setSelectedShiftFilter}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
         filteredRecords={filteredRecords}
     />
 )}
@@ -1618,9 +1999,11 @@ const handleSaveUser = async (e) => {
                                 {currentRole === 'supervisor' && activeTab === 'sup-qr' && (
     <SupervisorQr
         plants={plants}
+        allowedPlants={allowedPlants}
         showToast={showToast}
         activeQrCode={activeQrCode}
         setActiveQrCode={setActiveQrCode}
+        broadcastPlantQr={broadcastPlantQr}
     />
 )}
                                 {/* =============================================================== */}
@@ -1685,6 +2068,7 @@ const handleSaveUser = async (e) => {
 {/* MODAL 4: ALTA / EDICIÓN DE USUARIOS Y ROLES */}
 {isUserModalOpen && editingUser && (
     <UserModal
+        currentUser={currentUser}
         todayStr={todayStr}
         setIsUserModalOpen={setIsUserModalOpen}
         editingUser={editingUser}
@@ -1706,6 +2090,50 @@ const handleSaveUser = async (e) => {
         handleSavePlant={handleSavePlant}
     />
 )}
+
+                    {/* MODAL DE CONFIRMACIÓN DE VALIDACIÓN Y CANDADO DE TURNO (SUPERVISOR) */}
+                    {xpPopupModal && (
+                        <div className="fixed inset-0 z-50 bg-slate-900/55 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+                                <div className={`px-5 py-3.5 text-white font-bold text-xs flex items-center justify-between ${xpPopupModal.type === 'warning' ? 'bg-amber-600' : 'bg-emerald-700'}`}>
+                                    <span>{xpPopupModal.title}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setXpPopupModal(null)}
+                                        className="w-6 h-6 rounded-lg hover:bg-white/20 text-white font-bold text-xs"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                <div className="p-5 space-y-3 text-xs text-slate-800">
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Colaborador:</span>
+                                            <strong className="text-slate-900">{xpPopupModal.empNo} — {xpPopupModal.inspectorName}</strong>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Planta:</span>
+                                            <strong className="text-slate-800">{xpPopupModal.plantName}</strong>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Estatus Aplicado:</span>
+                                            <strong className="text-emerald-700">{xpPopupModal.statusApplied}</strong>
+                                        </div>
+                                    </div>
+                                    <p className="text-slate-600 leading-relaxed">{xpPopupModal.message}</p>
+                                    <div className="flex justify-end pt-2 border-t border-slate-100">
+                                        <button
+                                            type="button"
+                                            onClick={() => setXpPopupModal(null)}
+                                            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
+                                        >
+                                            Entendido
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                 </>
             )}

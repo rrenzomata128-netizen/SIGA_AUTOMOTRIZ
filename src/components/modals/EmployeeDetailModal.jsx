@@ -24,8 +24,13 @@ export default function EmployeeDetailModal({
                             <strong className="font-mono text-base text-slate-900">{selectedEmployeeDetail.totalRegularHours.toFixed(2)} h</strong>
                         </div>
                         <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200">
-                            <span className="text-[11px] text-amber-800 block">Horas Extra</span>
+                            <span className="text-[11px] text-amber-800 block">Horas Extra Acumuladas</span>
                             <strong className="font-mono text-base text-amber-600">+{selectedEmployeeDetail.totalOvertimeHours.toFixed(2)} h</strong>
+                            {selectedEmployeeDetail.tripleOvertimeHours > 0 && (
+                                <span className="block text-[10px] font-mono text-amber-800/80 mt-0.5">
+                                    Estándar: {(selectedEmployeeDetail.doubleOvertimeHours || 0).toFixed(2)}h | Excedente: {(selectedEmployeeDetail.tripleOvertimeHours || 0).toFixed(2)}h
+                                </span>
+                            )}
                         </div>
                         <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
                             <span className="text-[11px] text-emerald-800 font-bold block">Total Nómina</span>

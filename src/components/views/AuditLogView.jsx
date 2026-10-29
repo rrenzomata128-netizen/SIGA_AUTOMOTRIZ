@@ -2,6 +2,7 @@ import React from 'react';
 import { Edit3, FileText, Lock, Plus } from 'lucide-react';
 
 export default function AuditLogView({
+    currentUser,
     todayStr,
     setIsRecordModalOpen,
     setEditingRecord,
@@ -11,6 +12,7 @@ export default function AuditLogView({
     filteredRecords,
     handleAdminUnlockRecord,
 }) {
+    const isAdmin = (currentUser?.systemRole || currentUser?.system_role) === 'ADMIN';
     return (
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -113,7 +115,7 @@ export default function AuditLogView({
                                         >
                                             <Edit3 className="w-3 h-3" /> Editar
                                         </button>
-                                        {rec.validatedBySupervisor && (
+                                        {rec.validatedBySupervisor && isAdmin && (
                                             <button
                                                 onClick={() => handleAdminUnlockRecord(rec.id)}
                                                 title="Llave Maestra Admin: Desbloquear validación del supervisor"

@@ -107,7 +107,7 @@ export const evaluateAttendanceMetrics = (record) => {
             overtimeHours: 0,
             workedHoursDecimal: 0,
             workedHoursFormatted: 'En turno activo',
-            lateMinutes,
+            lateMinutes: record.status === 'Retardo' ? lateMinutes : 0,
             hasTransport: transportMins !== null,
             hasQrEntry: true,
             isShiftComplete: false,
@@ -138,11 +138,165 @@ export const evaluateAttendanceMetrics = (record) => {
         overtimeHours,
         workedHoursDecimal,
         workedHoursFormatted: formatMinutesToHHMM(elapsedMinutes),
-        lateMinutes,
+        lateMinutes: record.status === 'Retardo' ? lateMinutes : 0,
         hasTransport: transportMins !== null,
         hasQrEntry: true,
         isShiftComplete: true,
         shiftStateLabel: 'Jornada Concluida'
     };
 };
+
+// Desglosa tiempo extra acumulado en Dobles (hasta 9h por semana ISO, 200%) y Triples (excedente >9h, 300%) conforme Arts. 66-68 LFT
+export const evaluateLftOvertimeBreakdown = (sessions = []) => {
+    const getIsoWeekKey = (dateStr) => {
+        if (!dateStr) return 'DEFAULT-WEEK';
+        const parts = String(dateStr).split('-').map(Number);
+        if (parts.length !== 3 || parts.some(isNaN)) return 'DEFAULT-WEEK';
+        const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+        const dayNum = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+    };
+
+    const byWeek = {};
+    for (const s of sessions) {
+        const wk = getIsoWeekKey(s.date);
+        byWeek[wk] = (byWeek[wk] || 0) + (Number(s.overtimeMinutes) || 0);
+    }
+
+    let doubleOvertimeMinutes = 0;
+    let tripleOvertimeMinutes = 0;
+    const WEEKLY_DOUBLE_CAP_MINUTES = 9 * 60; // 9 horas semanales = 540 min (Art. 66 y 68 LFT)
+
+    for (const totalWeekExtMins of Object.values(byWeek)) {
+        const dbl = Math.min(totalWeekExtMins, WEEKLY_DOUBLE_CAP_MINUTES);
+        const trp = Math.max(0, totalWeekExtMins - WEEKLY_DOUBLE_CAP_MINUTES);
+        doubleOvertimeMinutes += dbl;
+        tripleOvertimeMinutes += trp;
+    }
+
+    return {
+        doubleOvertimeMinutes,
+        tripleOvertimeMinutes,
+        doubleOvertimeHours: safeRound2(doubleOvertimeMinutes / 60),
+        tripleOvertimeHours: safeRound2(tripleOvertimeMinutes / 60)
+    };
+};
+
+// Compresión de fotografía en cliente (Canvas -> JPEG optimizado <= ~80KB) para evitar sobrecarga en BD y Realtime
+export const compressAvatarImage = (file, maxDimension = 320, quality = 0.8) =>
+    new Promise((resolve, reject) => {
+        if (!file) return reject(new Error('Archivo no válido'));
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('No se pudo leer el archivo de imagen'));
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onerror = () => reject(new Error('Formato de imagen no soportado'));
+            img.onload = () => {
+                let { width, height } = img;
+                if (width > maxDimension || height > maxDimension) {
+                    if (width > height) {
+                        height = Math.round((height * maxDimension) / width);
+                        width = maxDimension;
+                    } else {
+                        width = Math.round((width * maxDimension) / height);
+                        height = maxDimension;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+// ============================================================================
+// MOTOR TOTP DE CÓDIGO QR DINÁMICO POR PLANTA (VENTANA DE 60s + TOLERANCIA)
+// ============================================================================
+const computeTotpPin4 = (plantCode, windowIndex) => {
+    const cleanCode = String(plantCode || 'PLANTA').trim().toUpperCase();
+    const seed = `SIGA-QR-V10::${cleanCode}::${windowIndex}`;
+    let hash = 2166136261;
+    for (let i = 0; i < seed.length; i++) {
+        hash ^= seed.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    const positive = (hash >>> 0) % 9000 + 1000;
+    return String(positive);
+};
+
+export const generatePlantQrState = (plantId, plantCode, nowMs = Date.now(), manualSalt = 0) => {
+    const cleanCode = String(plantCode || 'PLANTA').trim().toUpperCase();
+    const windowIndex = Math.floor(nowMs / 60000) + manualSalt;
+    const pin4 = computeTotpPin4(cleanCode, windowIndex);
+    const secondsLeft = 60 - (Math.floor(nowMs / 1000) % 60);
+    return {
+        plantId: plantId || '',
+        plantCode: cleanCode,
+        pin4,
+        code: `QR-AUTH-${cleanCode}-${pin4}`,
+        secondsLeft: secondsLeft === 0 ? 60 : secondsLeft
+    };
+};
+
+// Valida tanto el token completo (QR-AUTH-CODE-1234) como los 4 dígitos dinámicos (1234)
+// Acepta ventana amplia (-15 a +15 min por desfase de reloj entre PC y celular o regeneración manual) y el código transmitido en vivo
+export const verifyPlantQrInput = (rawInput, plantCode, liveBroadcastCode = null, nowMs = Date.now(), allPlantCodes = []) => {
+    const input = String(rawInput || '').trim().toUpperCase();
+    if (!input) return { valid: false, reason: 'Ingresa los 4 dígitos o escanea el código QR de la terminal en planta.' };
+
+    const cleanCode = String(plantCode || 'PLANTA').trim().toUpperCase();
+    const currentWin = Math.floor(nowMs / 60000);
+    const validPins = new Set();
+
+    // Ventana tolerante (-15 a +15) para absorber desfases de reloj entre PC y celular y saltos de regeneración manual
+    const candidatePlantCodes = new Set([
+        cleanCode,
+        'PLANTA',
+        ...(Array.isArray(allPlantCodes) ? allPlantCodes.map(c => String(c || '').trim().toUpperCase()).filter(Boolean) : [])
+    ]);
+
+    for (const codeCandidate of candidatePlantCodes) {
+        for (let offset = -15; offset <= 15; offset++) {
+            validPins.add(computeTotpPin4(codeCandidate, currentWin + offset));
+        }
+    }
+
+    if (liveBroadcastCode) {
+        if (Array.isArray(liveBroadcastCode)) {
+            for (const bc of liveBroadcastCode) {
+                const m = String(bc || '').toUpperCase().match(/(\d{4})$/);
+                if (m) validPins.add(m[1]);
+            }
+        } else {
+            const m = String(liveBroadcastCode).toUpperCase().match(/(\d{4})$/);
+            if (m) validPins.add(m[1]);
+        }
+    }
+
+    // Extraer los 4 dígitos si el usuario ingresó solo los 4 números o el token completo
+    const pinMatch = input.match(/^(\d{4})$/) || input.match(new RegExp(`^QR-AUTH-${cleanCode}-(\\d{4})$`, 'i')) || input.match(/-(\d{4})$/);
+    if (!pinMatch) {
+        return { valid: false, reason: 'Formato de código QR inválido. Ingresa los 4 dígitos dinámicos de tu planta.' };
+    }
+
+    const enteredPin = pinMatch[1];
+    if (!validPins.has(enteredPin)) {
+        return { valid: false, reason: 'Código QR expirado o incorrecto. Verifica el token activo en la pantalla del supervisor.' };
+    }
+
+    return {
+        valid: true,
+        fullCode: `QR-AUTH-${cleanCode}-${enteredPin}`
+    };
+};
+
+
 
