@@ -283,6 +283,35 @@ export default function App() {
 
         loadAllFromDatabase();
     }, [currentUser, fetchPlants, fetchUsers, fetchAttendance, showToast]);
+    // Cierra la sesión en tiempo real si el usuario es dado de BAJA
+useEffect(() => {
+  if (!currentUser?.id) return;
+
+  const channel = supabase
+    .channel(`profile-status-${currentUser.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${currentUser.id}`,
+      },
+      (payload) => {
+        const newStatus = payload.new?.status;
+        if (newStatus && newStatus !== 'ACTIVO') {
+          supabase.auth.signOut();
+          setCurrentUser(null);
+          showToast('Tu acceso ha sido dado de baja. Sesión cerrada.', 'error');
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [currentUser?.id]);
 
     // Suscripción Realtime en Supabase para plants, profiles, attendance_records y broadcast de tokens QR
     const realtimeChannelRef = useRef(null);
