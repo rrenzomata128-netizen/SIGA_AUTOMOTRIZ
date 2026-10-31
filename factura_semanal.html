@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estado de Cuenta y Factura Semanal - SIGA Automotriz</title>
+  <style>
+    :root {
+      --primary: #0f172a;
+      --secondary: #2563eb;
+      --accent: #0284c7;
+      --bg-light: #f8fafc;
+      --border: #e2e8f0;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: #f1f5f9;
+      color: var(--text-main);
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .invoice-container {
+      background-color: #ffffff;
+      width: 100%;
+      max-width: 850px;
+      padding: 40px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--border);
+    }
+
+    /* Encabezado */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 28px;
+    }
+
+    .brand h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -0.5px;
+    }
+
+    .brand h1 span {
+      color: var(--secondary);
+    }
+
+    .brand p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .invoice-title {
+      text-align: right;
+    }
+
+    .invoice-title h2 {
+      font-size: 20px;
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    .invoice-title .badge {
+      display: inline-block;
+      background-color: #dbeafe;
+      color: var(--secondary);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      margin-top: 6px;
+      text-transform: uppercase;
+    }
+
+    /* Metadatos */
+    .grid-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+
+    .meta-card {
+      background-color: var(--bg-light);
+      padding: 16px 20px;
+      border-radius: 6px;
+      border-left: 4px solid var(--secondary);
+    }
+
+    .meta-card h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .meta-card p {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .meta-card strong {
+      color: var(--primary);
+    }
+
+    /* Tabla */
+    .table-section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f8fafc;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 14px;
+      font-size: 13.5px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr.row-category {
+      background-color: #f1f5f9;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+    }
+
+    tr.row-category td {
+      padding: 8px 14px;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .font-semibold {
+      font-weight: 600;
+    }
+
+    /* Totales */
+    .summary-container {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 16px;
+      margin-bottom: 28px;
+    }
+
+    .summary-box {
+      width: 320px;
+      background-color: var(--bg-light);
+      padding: 16px 20px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13.5px;
+      padding: 6px 0;
+      color: var(--text-muted);
+    }
+
+    .summary-row.total {
+      border-top: 2px solid var(--border);
+      margin-top: 8px;
+      padding-top: 10px;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+
+    .summary-row.total span:last-child {
+      color: var(--secondary);
+    }
+
+    /* Pie de página */
+    .footer {
+      border-top: 1px dashed var(--border);
+      padding-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .audit-notice {
+      max-width: 520px;
+      line-height: 1.4;
+    }
+
+    .audit-notice strong {
+      color: var(--primary);
+    }
+
+    @media print {
+      body {
+        background-color: #ffffff;
+        padding: 0;
+      }
+      .invoice-container {
+        box-shadow: none;
+        border: none;
+        padding: 20px;
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="invoice-container">
+    <!-- Encabezado -->
+    <header class="header">
+      <div class="brand">
+        <h1>SIGA <span>AUTOMOTRIZ</span></h1>
+        <p>Sistema Integral de Gestión y Auditoría de Asistencia</p>
+        <p>Soporte Operativo & Facturación de Servicios</p>
+      </div>
+      <div class="invoice-title">
+        <h2>ESTADO DE CUENTA</h2>
+        <span class="badge">Facturación Semanal</span>
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">Folio: <strong>REC-2026-W43</strong></p>
+      </div>
+    </header>
+
+    <!-- Datos del Cliente y Período -->
+    <section class="grid-meta">
+      <div class="meta-card">
+        <h3>Cliente Receptor</h3>
+        <p><strong>EMPRESA DE CONTROL DE CALIDAD Y SORTEO S.A. DE C.V.</strong></p>
+        <p>RFC: ECC-210412-XYZ</p>
+        <p>Región: Ramos Arizpe / Saltillo / Derramadero, Coah.</p>
+      </div>
+      <div class="meta-card">
+        <h3>Detalle del Período Operativo</h3>
+        <p>Período: <strong>Semana 43</strong></p>
+        <p>Ciclo: <strong>Lunes 19/Oct/2026 al Domingo 25/Oct/2026</strong></p>
+        <p>Fecha de Emisión: <strong>Lunes 26 de Octubre de 2026</strong></p>
+      </div>
+    </section>
+
+    <!-- Tabla Detallada -->
+    <section class="table-section">
+      <div class="section-title">Desglose Operativo por Centros de Costo</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Concepto / Centro de Costos</th>
+            <th>Detalle Operativo</th>
+            <th class="text-center">Volumen</th>
+            <th class="text-right">Tarifa</th>
+            <th class="text-right">Importe</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 1. Desglose por Planta -->
+          <tr class="row-category">
+            <td colspan="5">1. Horas Activas de Inspección y Sorteo en Planta</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Planta Ensamble Derramadero</td>
+            <td>Horas auditadas (Turnos 1, 2 y 3)</td>
+            <td class="text-center">1,248.00 hrs</td>
+            <td class="text-right">$0.68</td>
+            <td class="text-right font-semibold">$848.64</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Planta Motores Ramos Arizpe</td>
+            <td>Horas auditadas (Turnos 1 y 2)</td>
+            <td class="text-center">960.00 hrs</td>
+            <td class="text-right">$0.68</td>
+            <td class="text-right font-semibold">$652.80</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Planta Tier 1 Santa María</td>
+            <td>Horas auditadas (Contención especial)</td>
+            <td class="text-center">288.00 hrs</td>
+            <td class="text-right">$0.68</td>
+            <td class="text-right font-semibold">$195.84</td>
+          </tr>
+
+          <!-- 2. Administrativos -->
+          <tr class="row-category">
+            <td colspan="5">2. Gestión Administrativa y Supervisión</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Supervisores en Planta</td>
+            <td>Licencia semanal activa (Validación QR y piso)</td>
+            <td class="text-center">3 usuarios</td>
+            <td class="text-right">$60.00</td>
+            <td class="text-right font-semibold">$180.00</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Administración Central / RH</td>
+            <td>Licencia semanal activa (Prenómina LFT y control)</td>
+            <td class="text-center">2 usuarios</td>
+            <td class="text-right">$85.00</td>
+            <td class="text-right font-semibold">$170.00</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Resumen y Totales -->
+    <section class="summary-container">
+      <div class="summary-box">
+        <div class="summary-row">
+          <span>Total Horas Auditadas:</span>
+          <strong style="color: var(--primary);">2,496.00 hrs</strong>
+        </div>
+        <div class="summary-row">
+          <span>Subtotal Horas Piso:</span>
+          <span>$1,697.28</span>
+        </div>
+        <div class="summary-row">
+          <span>Subtotal Licencias Gestión:</span>
+          <span>$350.00</span>
+        </div>
+        <div class="summary-row" style="border-top: 1px solid var(--border); padding-top: 6px;">
+          <span>Subtotal Neto:</span>
+          <span style="font-weight: 700; color: var(--primary);">$2,047.28 MXN</span>
+        </div>
+        <div class="summary-row">
+          <span>I.V.A. (16%):</span>
+          <span>$327.56 MXN</span>
+        </div>
+        <div class="summary-row total">
+          <span>TOTAL A PAGAR:</span>
+          <span>$2,374.84 MXN</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Auditoría y Pie -->
+    <footer class="footer">
+      <div class="audit-notice">
+        <strong>Certificación de Auditoría Operativa:</strong> Las horas reportadas fueron validadas en tiempo real mediante registro de transporte y escaneo de código QR dinámico en cada estación de trabajo, sirviendo de respaldo íntegro para dispersión de nómina y cobro al cliente final.
+      </div>
+      <div style="text-align: right;">
+        <p><strong>SIGA Automotriz Platform</strong></p>
+        <p>Monitoreo en tiempo real</p>
+      </div>
+    </footer>
+  </div>
+
+</body>
+</html>

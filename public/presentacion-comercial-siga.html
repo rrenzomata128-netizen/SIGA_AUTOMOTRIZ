@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Presentación Ejecutiva — Sistema Integral de Gestión de Asistencia y Prenómina</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b1120;
+            color: #f8fafc;
+            overflow: hidden;
+            user-select: none;
+        }
+        .font-mono-code {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        @keyframes radarSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .radar-beam {
+            background: conic-gradient(from 0deg, transparent 0deg, transparent 230deg, rgba(16, 185, 129, 0.9) 360deg);
+            animation: radarSpin 2.2s linear infinite;
+        }
+        .slide {
+            display: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.35s ease, transform 0.35s ease;
+        }
+        .slide.active {
+            display: flex;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* Custom Range Slider */
+        input[type="range"] {
+            accent-color: #2563eb;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between bg-slate-950 text-white">
+
+    <!-- BARRA SUPERIOR CORPORATIVA FIJA (IDÉNTICA AL SISTEMA EN VIVO) -->
+    <header class="bg-[#0f172a] border-b border-slate-800 px-6 py-3.5 flex items-center justify-between shrink-0 z-30 shadow-lg">
+        <div class="flex items-center gap-3.5">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-md shadow-indigo-500/30 border border-indigo-400/30">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-white">
+                    Sistema Integral de Gestión de Asistencia y Prenómina
+                </h1>
+                <p class="text-[11px] text-slate-400 font-medium hidden sm:block">
+                    Presentación Comercial Ejecutiva • División Inspección de Calidad y Operaciones Automotrices
+                </p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <!-- RADAR SONAR 360° -->
+            <div class="inline-flex items-center gap-2.5 text-xs bg-slate-900 text-emerald-300 font-bold px-3.5 py-1.5 rounded-full border border-emerald-500/40 shadow-sm">
+                <span class="relative flex items-center justify-center w-4 h-4 rounded-full bg-emerald-950 border border-emerald-400/60 overflow-hidden shrink-0">
+                    <span class="absolute inset-0 rounded-full border border-emerald-400/50 animate-ping"></span>
+                    <span class="absolute inset-0 rounded-full radar-beam"></span>
+                    <span class="relative z-10 w-1.5 h-1.5 rounded-full bg-[#00FF66] shadow-[0_0_6px_#00FF66]"></span>
+                </span>
+                <span class="tracking-wide hidden md:inline">Gestión Auditada en Tiempo Real</span>
+            </div>
+
+            <button onclick="toggleFullScreen()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all" title="Pantalla Completa (F11)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+                <span class="hidden sm:inline">Pantalla Completa</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- CONTENEDOR CENTRAL DE DIAPOSITIVAS -->
+    <main class="flex-1 relative overflow-y-auto px-6 sm:px-12 py-6 flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+
+        <!-- =============================================================== -->
+        <!-- SLIDE 1: PORTADA DE ALTO IMPACTO                                -->
+        <!-- =============================================================== -->
+        <section class="slide active w-full max-w-6xl flex-col justify-center space-y-8">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-400/30 text-blue-300 text-xs font-bold w-fit">
+                <span>🚀 TECNOLOGÍA B2B CLOUD PARA LA INDUSTRIA AUTOMOTRIZ (TIER 1 / OEM / SORTEO)</span>
+            </div>
+
+            <div class="space-y-4 max-w-4xl">
+                <h2 class="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight text-white">
+                    Control Total desde el <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Transporte</span> hasta la <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-300">Prenómina</span>.
+                </h2>
+                <p class="text-base sm:text-xl text-slate-300 font-normal leading-relaxed max-w-3xl">
+                    Elimine las listas en papel, los reportes tardíos por WhatsApp y el pago de horas fantasma. Monitoree en vivo qué inspectores van en ruta, quiénes ya firmaron código QR dinámico dentro de planta y liquide su prenómina en segundos con exactitud matemática.
+                </p>
+            </div>
+
+            <!-- 4 TARJETAS DE IMPACTO DIRECTO -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-blue-400">Visibilidad Pre-Turno</span>
+                    <div class="text-3xl font-black text-white font-mono-code">100% En Ruta</div>
+                    <p class="text-xs text-slate-400">Conozca quién abordó el transporte antes de que inicie el turno en la planta cliente.</p>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-emerald-400">Candado Anti-Fraude</span>
+                    <div class="text-3xl font-black text-emerald-400 font-mono-code">QR TOTP 60s</div>
+                    <p class="text-xs text-slate-400">El reloj de nómina inicia exclusivamente al validar el QR dinámico del Supervisor en planta.</p>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-amber-400">Ahorro Administrativo</span>
+                    <div class="text-3xl font-black text-white font-mono-code">-85% Tiempo</div>
+                    <p class="text-xs text-slate-400">De horas persiguiendo supervisores a cierres masivos en 1 clic auditados en tiempo real.</p>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-indigo-400">Capacidad Multi-Planta</span>
+                    <div class="text-3xl font-black text-indigo-300 font-mono-code">+200 Plantas</div>
+                    <p class="text-xs text-slate-400">Arquitectura en árbol de revelación progresiva diseñada para operar sin saturación visual.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SLIDE 2: EL PROBLEMA OPERATIVO Y FINANCIERO                     -->
+        <!-- =============================================================== -->
+        <section class="slide w-full max-w-6xl flex-col justify-center space-y-6">
+            <div>
+                <span class="text-xs font-extrabold uppercase tracking-widest text-red-400">El Diagnóstico en Campo</span>
+                <h2 class="text-2xl sm:text-4xl font-black text-white mt-1">
+                    ¿Por qué las empresas de inspección pierden rentabilidad en la asistencia?
+                </h2>
+                <p class="text-sm sm:text-base text-slate-400 mt-1">
+                    Operar múltiples plantas automotrices con controles manuales genera 4 fugas críticas todos los días:
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="bg-slate-900/80 border border-red-500/30 rounded-2xl p-6 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="px-3 py-1 rounded-lg bg-red-500/20 text-red-300 text-xs font-extrabold">1. Ceguera Operativa en Ruta (5:30 AM)</span>
+                        <span class="text-2xl">🚌</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-white">Enterarse de la falta cuando la línea ya arrancó</h3>
+                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        Sin confirmación de abordaje en transporte, RH y el Supervisor descubren que falta un inspector cuando el cliente automotriz ya reportó la posición descubierta, poniendo en riesgo el contrato.
+                    </p>
+                </div>
+
+                <div class="bg-slate-900/80 border border-amber-500/30 rounded-2xl p-6 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-xs font-extrabold">2. "Horas Fantasma" y Mensajes de WhatsApp</span>
+                        <span class="text-2xl">📱</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-white">Falta de certeza física de entrada y salida</h3>
+                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        Reportar asistencia por mensaje o lista de papel permite que se cobren turnos completos u horas extra sin haber estado físicamente en la estación de inspección dentro de la planta.
+                    </p>
+                </div>
+
+                <div class="bg-slate-900/80 border border-orange-500/30 rounded-2xl p-6 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="px-3 py-1 rounded-lg bg-orange-500/20 text-orange-300 text-xs font-extrabold">3. Supervisores Saturados en Cierre de Turno</span>
+                        <span class="text-2xl">⏳</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-white">Cuellos de botella entre Planta y Recursos Humanos</h3>
+                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        RH invierte horas persiguiendo por teléfono a cada supervisor para saber quién cerró turno normal, quién tuvo retardo y quién hizo horas extra autorizadas.
+                    </p>
+                </div>
+
+                <div class="bg-slate-900/80 border border-indigo-500/30 rounded-2xl p-6 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-xs font-extrabold">4. Inspectores Multi-Planta Descontrolados</span>
+                        <span class="text-2xl">🏭</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-white">Personal rotativo o comodines en varias plantas</h3>
+                    <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        Cuando un inspector cubre distintas plantas en la misma semana o realiza un turno adicional, las hojas de cálculo pierden el rastro de a qué planta cargar el costo real de esas horas.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SLIDE 3: LA SOLUCIÓN — TRIPLE CANDADO EN LA APP MÓVIL           -->
+        <!-- =============================================================== -->
+        <section class="slide w-full max-w-6xl flex-col justify-center space-y-6">
+            <div>
+                <span class="text-xs font-extrabold uppercase tracking-widest text-emerald-400">Trazabilidad de Extremo a Extremo</span>
+                <h2 class="text-2xl sm:text-4xl font-black text-white mt-1">
+                    El "Triple Candado" en la Terminal Móvil del Inspector
+                </h2>
+                <p class="text-sm sm:text-base text-slate-400 mt-1">
+                    Una interfaz guiada paso a paso que elimina el error humano y sincroniza con Matriz en milisegundos:
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <!-- PASO 1 -->
+                <div class="bg-white text-slate-900 rounded-2xl p-5 border-2 border-blue-500 shadow-xl flex flex-col justify-between space-y-4">
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-extrabold uppercase px-2.5 py-1 rounded-md bg-blue-100 text-blue-800">Candado 1 • En Ruta</span>
+                            <span class="text-xs font-bold text-blue-600">05:25 hrs</span>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-slate-900">1. Check-in en Transporte + Selección de Planta</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Al subir al transporte, el inspector confirma que va en ruta. Si tiene <strong>varias plantas activas</strong>, elige su planta destino (y puede corregirla en ruta antes de llegar).
+                        </p>
+                        <div class="bg-slate-50 border border-blue-200 rounded-xl p-3 space-y-1.5 text-xs">
+                            <div class="font-bold text-slate-700">Selecciona planta destino de hoy:</div>
+                            <div class="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold flex justify-between">
+                                <span>GM-RA — General Motors</span>
+                                <span>✓ Destino</span>
+                            </div>
+                            <div class="px-3 py-1.5 rounded-lg bg-white text-slate-600 border border-slate-200 font-semibold flex justify-between">
+                                <span>BWCRA-RA — BorgWarner</span>
+                                <span>Elegir</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="py-2.5 px-4 rounded-xl bg-blue-600 text-white text-xs font-bold text-center shadow-sm">
+                        🚌 Confirmar Abordaje Transporte (GM-RA)
+                    </div>
+                </div>
+
+                <!-- PASO 2 -->
+                <div class="bg-white text-slate-900 rounded-2xl p-5 border-2 border-emerald-500 shadow-xl flex flex-col justify-between space-y-4">
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-extrabold uppercase px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800">Candado 2 • En Planta</span>
+                            <span class="text-xs font-bold text-emerald-600">05:52 hrs</span>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-slate-900">2. Validación de QR Dinámico del Supervisor</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Al llegar físicamente a planta, el inspector ingresa el <strong>PIN QR de 4 dígitos</strong> del Supervisor (que rota cada 60s). <strong>Aquí inicia el conteo físico real de horas.</strong>
+                        </p>
+                        <div class="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-3 text-center space-y-1">
+                            <span class="text-[10px] font-bold uppercase text-emerald-700 block">PIN Criptográfico de Planta (60s)</span>
+                            <div class="font-mono-code text-2xl font-black tracking-[0.3em] text-slate-900">8 4 2 1</div>
+                        </div>
+                    </div>
+                    <div class="py-2.5 px-4 rounded-xl bg-emerald-600 text-white text-xs font-bold text-center shadow-sm">
+                        📲 Validar Token QR de GM-RA
+                    </div>
+                </div>
+
+                <!-- PASO 3 -->
+                <div class="bg-white text-slate-900 rounded-2xl p-5 border-2 border-slate-700 shadow-xl flex flex-col justify-between space-y-4">
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-extrabold uppercase px-2.5 py-1 rounded-md bg-slate-200 text-slate-800">Candado 3 • Salida Segura</span>
+                            <span class="text-xs font-bold text-slate-600">14:30 hrs</span>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-slate-900">3. Cronómetro en Vivo + Salida con Doble Confirmación</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Muestra el tiempo físico acumulado en vivo y protege contra cierres accidentales en el bolsillo mediante un <strong>candado de confirmación de 2 toques</strong>.
+                        </p>
+                        <div class="bg-emerald-950 text-white rounded-xl p-3 flex items-center justify-between">
+                            <div>
+                                <span class="text-[11px] font-bold block text-emerald-300">🟢 Turno activo en GM-RA</span>
+                                <span class="text-[10px] text-slate-300">Entrada QR: 05:52 hrs</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[9px] uppercase text-emerald-400 font-bold block">Tiempo Físico</span>
+                                <strong class="font-mono-code text-sm font-black">8h 38m</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="py-2.5 px-4 rounded-xl bg-red-600 text-white text-xs font-bold text-center shadow-sm">
+                        🛡️ Confirmar Salida Definitiva (2 Toques)
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SLIDE 4: TORRE DE CONTROL RH Y ÁRBOL DE 3 NIVELES INTERACTIVO   -->
+        <!-- =============================================================== -->
+        <section class="slide w-full max-w-6xl flex-col justify-center space-y-5">
+            <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+                <div>
+                    <span class="text-xs font-extrabold uppercase tracking-widest text-blue-400">Diseño Ejecutivo de Revelación Progresiva</span>
+                    <h2 class="text-2xl sm:text-3xl font-black text-white mt-0.5">
+                        Torre de Control RH: Estructura en Árbol de 3 Niveles
+                    </h2>
+                    <p class="text-xs sm:text-sm text-slate-400">
+                        Monitoree <strong>Personal en Trayecto</strong>, <strong>Cierre de Supervisores</strong>, <strong>Turnos (8h/12h)</strong> y <strong>Gráficas</strong> sin saturar la pantalla. <em>(Haga clic en la planta abajo para probar el árbol en vivo):</em>
+                    </p>
+                </div>
+            </div>
+
+            <!-- DEMO INTERACTIVO DEL ÁRBOL DE 3 NIVELES TAL CUAL EL SISTEMA -->
+            <div class="bg-slate-100 text-slate-900 rounded-2xl p-4 border border-slate-300 shadow-2xl space-y-3">
+                <!-- Barra 1: Personal en Trayecto -->
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                    <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="p-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 text-xs">🚌</span>
+                            <strong class="text-xs sm:text-sm text-slate-900">Personal en Trayecto:</strong>
+                            <span class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-300">
+                                2 En Ruta • 28 Firmaron QR • 1 Falta(s)
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-[11px] font-bold">
+                            <span class="px-2.5 py-1 rounded-lg bg-blue-100 text-blue-900 border border-blue-300">🚌 2 En Ruta</span>
+                            <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200">📲 28 Firmaron QR</span>
+                            <span class="px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200">⚠️ 1 Falta(s)</span>
+                        </div>
+                    </div>
+
+                    <!-- Árbol Nivel 1 -> Nivel 2 -> Nivel 3 -->
+                    <div class="p-3 space-y-2">
+                        <!-- Planta 1 (Interactiva) -->
+                        <div class="rounded-xl border border-blue-300 bg-blue-50/20 overflow-hidden">
+                            <div onclick="toggleDemoTree('demoPlant1')" class="px-3.5 py-2 bg-white hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer border-b border-slate-200">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-extrabold px-2 py-0.5 rounded bg-slate-900 text-white">BWCRA-RA</span>
+                                    <strong class="text-xs sm:text-sm text-slate-900">BorgWarner Componentes Ramos Arizpe</strong>
+                                    <span class="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">2 inspectores • Total: 10</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 text-[11px] font-bold">
+                                    <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-900 border border-blue-300">🚌 1 En Ruta</span>
+                                    <span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">📲 9 Firmaron QR</span>
+                                    <span class="px-2 py-0.5 rounded bg-white text-slate-400 border border-slate-200">⚠️ 0 Falta(s)</span>
+                                    <span class="w-6 h-6 inline-flex items-center justify-center rounded bg-slate-100 text-slate-700 border border-slate-300 text-xs">▾</span>
+                                </div>
+                            </div>
+
+                            <!-- Nivel 2: Inspectores -->
+                            <div id="demoPlant1" class="p-2.5 bg-white">
+                                <div class="ml-3 pl-3.5 border-l-2 border-slate-300 space-y-2">
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                                        <div onclick="toggleDemoTree('demoInsp1')" class="px-3 py-1.5 bg-white hover:bg-slate-50 flex items-center justify-between cursor-pointer border-b border-slate-200">
+                                            <div class="flex items-center gap-2 text-xs">
+                                                <span class="font-mono-code text-slate-400 font-bold">├─</span>
+                                                <span class="font-mono-code text-[11px] font-extrabold px-2 py-0.5 rounded bg-indigo-100 text-indigo-900">NOM-1066</span>
+                                                <strong class="text-slate-900">Maribel Espinoza Cortés</strong>
+                                                <span class="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border">3 fechas (clic para plegar/desplegar)</span>
+                                            </div>
+                                            <div class="flex items-center gap-1.5 text-[10px] font-bold">
+                                                <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-900 border border-blue-300">🚌 1 En Ruta</span>
+                                                <span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">📲 2 Firmaron QR</span>
+                                                <span class="w-5 h-5 inline-flex items-center justify-center rounded bg-slate-100 border">▾</span>
+                                            </div>
+                                        </div>
+                                        <!-- Nivel 3: Fechas -->
+                                        <div id="demoInsp1" class="px-3 py-2 bg-white">
+                                            <div class="ml-5 pl-3 border-l-2 border-indigo-200 space-y-1 text-[11px]">
+                                                <div class="px-2.5 py-1 rounded bg-blue-50/60 border border-blue-200 flex justify-between items-center">
+                                                    <div><span class="font-mono-code text-slate-400">├─</span> <strong class="font-mono-code">📅 2026-10-26 (Hoy)</strong> • Turno 1 (06:00 - 14:30)</div>
+                                                    <div class="flex gap-2 items-center">
+                                                        <span class="font-mono-code bg-white px-2 py-0.5 rounded border">🚌 Abordaje: <strong>05:24</strong></span>
+                                                        <span class="font-mono-code bg-white px-2 py-0.5 rounded border">📲 QR: <strong>--:--</strong></span>
+                                                        <span class="font-bold px-2 py-0.5 rounded bg-blue-600 text-white">🚌 En Ruta</span>
+                                                    </div>
+                                                </div>
+                                                <div class="px-2.5 py-1 rounded bg-slate-50 border border-slate-200 flex justify-between items-center">
+                                                    <div><span class="font-mono-code text-slate-400">└─</span> <strong class="font-mono-code">📅 2026-10-25</strong> • Turno 1 (06:00 - 14:30)</div>
+                                                    <div class="flex gap-2 items-center">
+                                                        <span class="font-mono-code bg-white px-2 py-0.5 rounded border">🚌 Abordaje: <strong>05:20</strong></span>
+                                                        <span class="font-mono-code bg-white px-2 py-0.5 rounded border">📲 QR: <strong>05:51</strong></span>
+                                                        <span class="font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300">📲 Firmaron QR</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SLIDE 5: CENTRO DE VALIDACIÓN DEL SUPERVISOR Y CERO HOLGURA     -->
+        <!-- =============================================================== -->
+        <section class="slide w-full max-w-6xl flex-col justify-center space-y-6">
+            <div>
+                <span class="text-xs font-extrabold uppercase tracking-widest text-emerald-400">Agilidad en Planta + Reacción Inmediata</span>
+                <h2 class="text-2xl sm:text-4xl font-black text-white mt-1">
+                    Cierre de Supervisores en 1 Clic y Brigada "Cero Holgura"
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-extrabold uppercase px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Terminal de Supervisor en Planta
+                        </span>
+                        <span class="text-xs font-mono-code text-slate-400">Candado de Nómina</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-white">Validación Masiva Inteligente + Sellado</h3>
+                    <ul class="space-y-2.5 text-xs sm:text-sm text-slate-300">
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-400 font-bold">✓</span>
+                            <span><strong>Validación en Bloque (1 Clic):</strong> El supervisor aprueba todos los turnos ordinarios cumplidos a tiempo sin perder tiempo registro por registro.</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-400 font-bold">✓</span>
+                            <span><strong>Auditoría Obligatoria en Sobretiempo:</strong> Los turnos con horas extra extendidas se separan automáticamente para exigir justificación operativa antes de liberar el pago.</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-emerald-400 font-bold">✓</span>
+                            <span><strong>Aviso Directo por WhatsApp desde RH:</strong> Si un supervisor no ha cerrado sus turnos del día, RH le envía un recordatorio prellenado con los nombres exactos en 1 clic.</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-extrabold uppercase px-3 py-1 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+                            Protocolo de Reacción Automotriz
+                        </span>
+                        <span class="text-xs font-mono-code text-slate-400">Cero Líneas Detenidas</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-white">Cobertura Inmediata con Inspector Comodín</h3>
+                    <ul class="space-y-2.5 text-xs sm:text-sm text-slate-300">
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">✓</span>
+                            <span><strong>Detección Temprana de Ausencias:</strong> En cuanto se detecta falta de abordaje o retardo crítico, la alerta aparece en el módulo de <em>Alertas Faltas/Retardos</em>.</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">✓</span>
+                            <span><strong>Asignación de Brigada Comodín:</strong> Permite asignar en línea a un inspector comodín para cubrir la posición en la planta cliente y dejar trazabilidad en la bitácora.</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">✓</span>
+                            <span><strong>Soporte de Doble Turno / Jornada Extra:</strong> Si un inspector cubre un segundo turno el mismo día, el sistema registra ambas sesiones de forma independiente y auditable.</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SLIDE 6: MOTOR ARITMÉTICO DE PRENÓMINA Y HORAS FÍSICAS          -->
+        <!-- =============================================================== -->
+        <section class="slide w-full max-w-6xl flex-col justify-center space-y-6">
+            <div>
+                <span class="text-xs font-extrabold uppercase tracking-widest text-indigo-400">Exactitud Financiera al Centavo</span>
+                <h2 class="text-2xl sm:text-4xl font-black text-white mt-1">
+                    Motor Aritmético de Prenómina y Horas Físicas en Planta
+                </h2>
+                <p class="text-sm sm:text-base text-slate-400 mt-1">
+                    Separación estricta entre el tiempo de traslado y las horas físicas reales trabajadas dentro de la planta:
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+                    <div class="text-xs font-extrabold uppercase text-emerald-400">1. Regla de Hierro en Conteo</div>
+                    <h3 class="text-lg font-bold text-white">Solo cuenta desde el QR en Planta hasta la Salida</h3>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        El check-in en el autobús sirve para monitoreo logístico en ruta, pero <strong>no infla la nómina</strong>. Las horas ordinarias y extra se calculan estrictamente entre el escaneo del QR en planta y la salida física.
+                    </p>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+                    <div class="text-xs font-extrabold uppercase text-blue-400">2. Analítica de Carga Operativa</div>
+                    <h3 class="text-lg font-bold text-white">Ranking de Horas Físicas (Por Planta y Trabajador)</h3>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        Gráficas interactivas ordenadas de <strong>mayor a menor</strong> que muestran en segundos qué planta consume más horas de inspección y qué trabajadores acumulan más tiempo extra.
+                    </p>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+                    <div class="text-xs font-extrabold uppercase text-amber-400">3. Exportación Lista para Pago</div>
+                    <h3 class="text-lg font-bold text-white">Cédula de Prenómina CSV / Excel e Impresión</h3>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        Cuadre vertical y horizontal garantizado entre las tarjetas KPI, el monitor por planta y la cédula individual de cada inspector, con desglose de horas ordinarias, dobles y triples.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SLIDE 7: CALCULADORA INTERACTIVA DE ROI EN VIVO                 -->
+        <!-- =============================================================== -->
+        <section class="slide w-full max-w-6xl flex-col justify-center space-y-5">
+            <div>
+                <span class="text-xs font-extrabold uppercase tracking-widest text-emerald-400">Simulador Financiero en Vivo para el Prospecto</span>
+                <h2 class="text-2xl sm:text-4xl font-black text-white mt-1">
+                    Calculadora de Retorno de Inversión (ROI)
+                </h2>
+                <p class="text-xs sm:text-sm text-slate-400">
+                    Ajuste los parámetros de su operación actual para estimar el ahorro directo al eliminar horas fantasma, retardos no descontados y tiempo administrativo:
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                <!-- CONTROLES DESLIZANTES -->
+                <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-xs sm:text-sm font-bold">
+                            <span class="text-slate-300">👷 Número de Inspectores / Operadores Activos:</span>
+                            <span id="lblInspectors" class="font-mono-code text-blue-400 text-base">120 inspectores</span>
+                        </div>
+                        <input id="rngInspectors" type="range" min="15" max="1000" step="5" value="120" oninput="updateRoi()" class="w-full cursor-pointer" />
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-xs sm:text-sm font-bold">
+                            <span class="text-slate-300">🏭 Plantas Automotrices Atendidas:</span>
+                            <span id="lblPlants" class="font-mono-code text-indigo-400 text-base">11 plantas</span>
+                        </div>
+                        <input id="rngPlants" type="range" min="1" max="60" step="1" value="11" oninput="updateRoi()" class="w-full cursor-pointer" />
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-xs sm:text-sm font-bold">
+                            <span class="text-slate-300">💵 Costo Hora Promedio Integrado (MXN):</span>
+                            <span id="lblRate" class="font-mono-code text-emerald-400 text-base">$115 MXN/h</span>
+                        </div>
+                        <input id="rngRate" type="range" min="60" max="350" step="5" value="115" oninput="updateRoi()" class="w-full cursor-pointer" />
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-xs sm:text-sm font-bold">
+                            <span class="text-slate-300">📉 Fuga Estimada en Horas Fantasma / Sobretiempo no auditado:</span>
+                            <span id="lblLeak" class="font-mono-code text-amber-400 text-base">5%</span>
+                        </div>
+                        <input id="rngLeak" type="range" min="2" max="15" step="1" value="5" oninput="updateRoi()" class="w-full cursor-pointer" />
+                    </div>
+                </div>
+
+                <!-- RESULTADOS FINANCIEROS EN TIEMPO REAL -->
+                <div class="lg:col-span-5 bg-gradient-to-br from-blue-950 via-slate-900 to-emerald-950 border-2 border-emerald-500/40 rounded-2xl p-6 flex flex-col justify-between space-y-4 shadow-2xl">
+                    <div class="space-y-1">
+                        <span class="text-[11px] font-extrabold uppercase tracking-widest text-emerald-300">Ahorro Directo Estimado en Nómina</span>
+                        <div id="outMonthlySavings" class="text-3xl sm:text-4xl font-black text-white font-mono-code">$132,480 MXN <span class="text-xs font-normal text-slate-400">/ mes</span></div>
+                    </div>
+
+                    <div class="p-4 rounded-xl bg-slate-950/70 border border-emerald-500/30 space-y-1">
+                        <span class="text-xs font-bold text-emerald-400 block">💰 Impacto Anual Recuperado (12 Meses):</span>
+                        <div id="outAnnualSavings" class="text-2xl sm:text-3xl font-black text-[#00FF66] font-mono-code">$1,589,760 MXN</div>
+                        <p class="text-[11px] text-slate-400">Dinero que hoy se pierde en minutos de retardo no registrados, salidas anticipadas o tiempo extra sin sustento QR.</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                            <span class="text-slate-400 block">Horas Fantasma Evitadas</span>
+                            <strong id="outHoursSaved" class="font-mono-code text-base text-blue-300">1,152 hrs/mes</strong>
+                        </div>
+                        <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                            <span class="text-slate-400 block">Tiempo RH Ahorrado</span>
+                            <strong id="outAdminSaved" class="font-mono-code text-base text-indigo-300">66 hrs/mes</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============================================================== -->
+        <!-- SLIDE 8: ARQUITECTURA, SEGURIDAD Y PUESTA EN MARCHA             -->
+        <!-- =============================================================== -->
+        <section class="slide w-full max-w-6xl flex-col justify-center space-y-6">
+            <div>
+                <span class="text-xs font-extrabold uppercase tracking-widest text-blue-400">Listo para Operación Industrial</span>
+                <h2 class="text-2xl sm:text-4xl font-black text-white mt-1">
+                    Seguridad de Grado Empresarial e Implementación en 48 Horas
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2.5">
+                    <span class="text-xs font-extrabold px-2.5 py-1 rounded bg-blue-500/20 text-blue-300">Paso 1 • Día 1</span>
+                    <h3 class="text-lg font-bold text-white">Carga de Catálogo de Plantas y Turnos</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        Configuramos sus plantas automotrices activas, esquemas de turnos de 8h (Matutino, Vespertino, Nocturno) y turnos especiales de 12h.
+                    </p>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2.5">
+                    <span class="text-xs font-extrabold px-2.5 py-1 rounded bg-indigo-500/20 text-indigo-300">Paso 2 • Día 1</span>
+                    <h3 class="text-lg font-bold text-white">Alta de Supervisores e Inspectores con PIN</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        Cada colaborador recibe su acceso personal por Número de Nómina y PIN de 6 dígitos, con asignación a una o múltiples plantas y gafete digital con fotografía.
+                    </p>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2.5">
+                    <span class="text-xs font-extrabold px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300">Paso 3 • Día 2</span>
+                    <h3 class="text-lg font-bold text-white">Arranque en Vivo y Monitoreo en Matriz</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        Sin instalar hardware costoso: los inspectores registran desde su teléfono móvil, los supervisores proyectan el QR dinámico en planta y RH audita en tiempo real.
+                    </p>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                <div>
+                    <h3 class="text-xl font-black text-white">¿Vemos el sistema operando en vivo ahora mismo?</h3>
+                    <p class="text-xs sm:text-sm text-blue-100 mt-0.5">
+                        Podemos hacer una prueba en tiempo real simulando el abordaje de un inspector en transporte, la validación QR con el supervisor y el reflejo inmediato en la Torre de Control de RH.
+                    </p>
+                </div>
+                <span class="px-5 py-3 rounded-xl bg-white text-slate-950 font-black text-xs sm:text-sm whitespace-nowrap shadow-md">
+                    🚀 Pasar a Demostración en Vivo
+                </span>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- BARRA INFERIOR DE NAVEGACIÓN DE DIAPOSITIVAS -->
+    <footer class="bg-[#0f172a] border-t border-slate-800 px-6 py-3 flex items-center justify-between shrink-0 z-30">
+        <div class="flex items-center gap-2 text-xs text-slate-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span id="slideCounter" class="font-mono-code font-bold text-white">Diapositiva 1 / 8</span>
+            <span class="hidden md:inline text-slate-500">• Use las flechas del teclado (← / →) para avanzar</span>
+        </div>
+
+        <!-- Puntos de navegación rápida -->
+        <div id="dotsContainer" class="flex items-center gap-2"></div>
+
+        <div class="flex items-center gap-2">
+            <button onclick="prevSlide()" class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 cursor-pointer transition-all">
+                ← Anterior
+            </button>
+            <button onclick="nextSlide()" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 cursor-pointer transition-all">
+                Siguiente →
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const dotsContainer = document.getElementById('dotsContainer');
+        const slideCounter = document.getElementById('slideCounter');
+
+        function renderDots() {
+            dotsContainer.innerHTML = '';
+            slides.forEach((_, idx) => {
+                const btn = document.createElement('button');
+                btn.className = idx === currentSlide
+                    ? 'w-7 h-2 rounded-full bg-blue-500 transition-all cursor-pointer'
+                    : 'w-2 h-2 rounded-full bg-slate-700 hover:bg-slate-500 transition-all cursor-pointer';
+                btn.title = `Ir a diapositiva ${idx + 1}`;
+                btn.onclick = () => goToSlide(idx);
+                dotsContainer.appendChild(btn);
+            });
+            slideCounter.textContent = `Diapositiva ${currentSlide + 1} / ${slides.length}`;
+        }
+
+        function goToSlide(index) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (index + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+            renderDots();
+        }
+
+        function nextSlide() {
+            goToSlide(currentSlide + 1);
+        }
+
+        function prevSlide() {
+            goToSlide(currentSlide - 1);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'PageDown') nextSlide();
+            if (e.key === 'ArrowLeft' || e.key === 'PageUp') prevSlide();
+        });
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+
+        function toggleDemoTree(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function updateRoi() {
+            const inspectors = Number(document.getElementById('rngInspectors').value);
+            const plants = Number(document.getElementById('rngPlants').value);
+            const rate = Number(document.getElementById('rngRate').value);
+            const leakPct = Number(document.getElementById('rngLeak').value);
+
+            document.getElementById('lblInspectors').textContent = `${inspectors} inspectores`;
+            document.getElementById('lblPlants').textContent = `${plants} planta${plants === 1 ? '' : 's'}`;
+            document.getElementById('lblRate').textContent = `$${rate} MXN/h`;
+            document.getElementById('lblLeak').textContent = `${leakPct}%`;
+
+            // 192 horas promedio al mes por inspector (48h x 4 semanas)
+            const totalMonthlyHours = inspectors * 192;
+            const savedHours = Math.round(totalMonthlyHours * (leakPct / 100));
+            const monthlySavings = savedHours * rate;
+            const annualSavings = monthlySavings * 12;
+            const adminHoursSaved = Math.round(plants * 6);
+
+            const fmtMXN = (n) => '$' + n.toLocaleString('es-MX') + ' MXN';
+            document.getElementById('outMonthlySavings').innerHTML = `${fmtMXN(monthlySavings)} <span class="text-xs font-normal text-slate-400">/ mes</span>`;
+            document.getElementById('outAnnualSavings').textContent = fmtMXN(annualSavings);
+            document.getElementById('outHoursSaved').textContent = `${savedHours.toLocaleString('es-MX')} hrs/mes`;
+            document.getElementById('outAdminSaved').textContent = `${adminHoursSaved} hrs/mes`;
+        }
+
+        renderDots();
+        updateRoi();
+    </script>
+</body>
+</html>
